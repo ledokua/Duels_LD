@@ -29,6 +29,7 @@ public class ActiveDuel {
     private final Map<UUID, Float> lastHealth = new ConcurrentHashMap<>();
     private final Map<UUID, net.minecraft.world.phys.Vec3> spawnPositions = new ConcurrentHashMap<>();
     private String arenaName;
+    private boolean matchmaking;
 
     public ActiveDuel(UUID player1, UUID player2, DuelSettings settings, String teamName, float p1Hp, float p2Hp, GameType p1Gm, GameType p2Gm) {
         this.player1 = player1;
@@ -47,7 +48,7 @@ public class ActiveDuel {
         lastHealth.put(player2, p2Hp);
         
         this.bossBar = new ServerBossEvent(
-            Component.literal("Starting in " + countdownSeconds),
+            Component.translatable("duels_ld.duel.boss_starting", countdownSeconds),
             BossEvent.BossBarColor.RED,
             BossEvent.BossBarOverlay.PROGRESS
         );
@@ -131,6 +132,14 @@ public class ActiveDuel {
 
     public void setArenaName(String arenaName) {
         this.arenaName = arenaName;
+    }
+
+    public boolean isMatchmaking() {
+        return matchmaking;
+    }
+
+    public void setMatchmaking(boolean matchmaking) {
+        this.matchmaking = matchmaking;
     }
 
     public void setSpawnPosition(UUID player, net.minecraft.world.phys.Vec3 pos) {

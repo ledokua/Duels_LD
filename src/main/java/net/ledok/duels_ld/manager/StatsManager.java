@@ -26,7 +26,14 @@ public class StatsManager {
 
     public static void init() {
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
-            statsFile = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("duel_stats.json").toFile();
+            java.nio.file.Path dir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
+                .resolve("duels_ld");
+            try {
+                java.nio.file.Files.createDirectories(dir);
+            } catch (IOException e) {
+                LOGGER.error("Failed to create mod data directory.", e);
+            }
+            statsFile = dir.resolve("duel_stats.json").toFile();
             loadStats();
         });
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> saveStats());

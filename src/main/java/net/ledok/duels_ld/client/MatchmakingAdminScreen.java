@@ -23,11 +23,11 @@ public class MatchmakingAdminScreen extends Screen {
     private EditBox supportPerHeal;
     private EditBox defensePerBlocked;
     private EditBox killBonus;
-    private String errorMessage = "";
+    private Component errorMessage = Component.empty();
     private SyncMatchmakingSettingsPayload pendingSettings;
 
     public MatchmakingAdminScreen() {
-        super(Component.literal("Matchmaking Settings"));
+        super(Component.translatable("duels_ld.screen.matchmaking_admin.title"));
     }
 
     @Override
@@ -38,15 +38,15 @@ public class MatchmakingAdminScreen extends Screen {
         int fieldX = left + 165;
         int rowHeight = 18;
 
-        oneVOneTime = new EditBox(this.font, fieldX, top + 24, 70, 16, Component.literal("1v1 time"));
-        oneVOneWinHp = new EditBox(this.font, fieldX, top + 24 + rowHeight, 70, 16, Component.literal("1v1 win hp"));
-        twoVTwoTime = new EditBox(this.font, fieldX, top + 24 + rowHeight * 2, 70, 16, Component.literal("2v2 time"));
-        twoVTwoWinHp = new EditBox(this.font, fieldX, top + 24 + rowHeight * 3, 70, 16, Component.literal("2v2 win hp"));
+        oneVOneTime = new EditBox(this.font, fieldX, top + 24, 70, 16, Component.translatable("duels_ld.screen.matchmaking_admin.one_v_one_time_placeholder"));
+        oneVOneWinHp = new EditBox(this.font, fieldX, top + 24 + rowHeight, 70, 16, Component.translatable("duels_ld.screen.matchmaking_admin.one_v_one_win_hp_placeholder"));
+        twoVTwoTime = new EditBox(this.font, fieldX, top + 24 + rowHeight * 2, 70, 16, Component.translatable("duels_ld.screen.matchmaking_admin.two_v_two_time_placeholder"));
+        twoVTwoWinHp = new EditBox(this.font, fieldX, top + 24 + rowHeight * 3, 70, 16, Component.translatable("duels_ld.screen.matchmaking_admin.two_v_two_win_hp_placeholder"));
 
-        offensePerDamage = new EditBox(this.font, fieldX, top + 24 + rowHeight * 4, 70, 16, Component.literal("Offense per dmg"));
-        supportPerHeal = new EditBox(this.font, fieldX, top + 24 + rowHeight * 5, 70, 16, Component.literal("Support per heal"));
-        defensePerBlocked = new EditBox(this.font, fieldX, top + 24 + rowHeight * 6, 70, 16, Component.literal("Defense per block"));
-        killBonus = new EditBox(this.font, fieldX, top + 24 + rowHeight * 7, 70, 16, Component.literal("Kill bonus"));
+        offensePerDamage = new EditBox(this.font, fieldX, top + 24 + rowHeight * 4, 70, 16, Component.translatable("duels_ld.screen.matchmaking_admin.offense_placeholder"));
+        supportPerHeal = new EditBox(this.font, fieldX, top + 24 + rowHeight * 5, 70, 16, Component.translatable("duels_ld.screen.matchmaking_admin.support_placeholder"));
+        defensePerBlocked = new EditBox(this.font, fieldX, top + 24 + rowHeight * 6, 70, 16, Component.translatable("duels_ld.screen.matchmaking_admin.defense_placeholder"));
+        killBonus = new EditBox(this.font, fieldX, top + 24 + rowHeight * 7, 70, 16, Component.translatable("duels_ld.screen.matchmaking_admin.kill_bonus_placeholder"));
 
         addRenderableWidget(oneVOneTime);
         addRenderableWidget(oneVOneWinHp);
@@ -57,18 +57,18 @@ public class MatchmakingAdminScreen extends Screen {
         addRenderableWidget(defensePerBlocked);
         addRenderableWidget(killBonus);
 
-        addRenderableWidget(new LabelWidget(labelX, top + 26, Component.literal("1v1 time (s):")));
-        addRenderableWidget(new LabelWidget(labelX, top + 26 + rowHeight, Component.literal("1v1 win HP (%):")));
-        addRenderableWidget(new LabelWidget(labelX, top + 26 + rowHeight * 2, Component.literal("2v2 time (s):")));
-        addRenderableWidget(new LabelWidget(labelX, top + 26 + rowHeight * 3, Component.literal("2v2 win HP (%):")));
-        addRenderableWidget(new LabelWidget(labelX, top + 26 + rowHeight * 4, Component.literal("Offense / dmg:")));
-        addRenderableWidget(new LabelWidget(labelX, top + 26 + rowHeight * 5, Component.literal("Support / heal:")));
-        addRenderableWidget(new LabelWidget(labelX, top + 26 + rowHeight * 6, Component.literal("Defense / block:")));
-        addRenderableWidget(new LabelWidget(labelX, top + 26 + rowHeight * 7, Component.literal("Kill bonus:")));
+        addRenderableWidget(new LabelWidget(labelX, top + 26, Component.translatable("duels_ld.screen.matchmaking_admin.one_v_one_time_label")));
+        addRenderableWidget(new LabelWidget(labelX, top + 26 + rowHeight, Component.translatable("duels_ld.screen.matchmaking_admin.one_v_one_win_hp_label")));
+        addRenderableWidget(new LabelWidget(labelX, top + 26 + rowHeight * 2, Component.translatable("duels_ld.screen.matchmaking_admin.two_v_two_time_label")));
+        addRenderableWidget(new LabelWidget(labelX, top + 26 + rowHeight * 3, Component.translatable("duels_ld.screen.matchmaking_admin.two_v_two_win_hp_label")));
+        addRenderableWidget(new LabelWidget(labelX, top + 26 + rowHeight * 4, Component.translatable("duels_ld.screen.matchmaking_admin.offense_label")));
+        addRenderableWidget(new LabelWidget(labelX, top + 26 + rowHeight * 5, Component.translatable("duels_ld.screen.matchmaking_admin.support_label")));
+        addRenderableWidget(new LabelWidget(labelX, top + 26 + rowHeight * 6, Component.translatable("duels_ld.screen.matchmaking_admin.defense_label")));
+        addRenderableWidget(new LabelWidget(labelX, top + 26 + rowHeight * 7, Component.translatable("duels_ld.screen.matchmaking_admin.kill_bonus_label")));
 
-        addRenderableWidget(Button.builder(Component.literal("Save"), button -> save())
+        addRenderableWidget(Button.builder(Component.translatable("duels_ld.screen.matchmaking_admin.save"), button -> save())
             .bounds(left + 12, top + PANEL_HEIGHT - 26, 70, 18).build());
-        addRenderableWidget(Button.builder(Component.literal("Close"), button -> this.onClose())
+        addRenderableWidget(Button.builder(Component.translatable("duels_ld.screen.matchmaking_admin.close"), button -> this.onClose())
             .bounds(left + PANEL_WIDTH - 82, top + PANEL_HEIGHT - 26, 70, 18).build());
 
         if (pendingSettings != null) {
@@ -102,7 +102,7 @@ public class MatchmakingAdminScreen extends Screen {
         guiGraphics.blit(LOBBY_BG, left, top, 0, 0, PANEL_WIDTH, PANEL_HEIGHT, PANEL_WIDTH, PANEL_HEIGHT);
         guiGraphics.drawCenteredString(this.font, this.title, left + PANEL_WIDTH / 2, top + 3, 0xFF000000);
 
-        if (!errorMessage.isEmpty()) {
+        if (!errorMessage.getString().isEmpty()) {
             guiGraphics.drawString(this.font, errorMessage, left + 12, top + PANEL_HEIGHT - 40, 0xFFFF6666);
         }
 
@@ -120,19 +120,19 @@ public class MatchmakingAdminScreen extends Screen {
         double kill = parseDouble(killBonus.getValue());
 
         if (v1Time < 10 || v2Time < 10) {
-            errorMessage = "Time must be at least 10 seconds.";
+            errorMessage = Component.translatable("duels_ld.screen.matchmaking_admin.error_time_min");
             return;
         }
         if (v1Hp < 0 || v1Hp > 100 || v2Hp < 0 || v2Hp > 100) {
-            errorMessage = "Win HP must be 0 to 100.";
+            errorMessage = Component.translatable("duels_ld.screen.matchmaking_admin.error_win_hp_range");
             return;
         }
         if (off < 0 || sup < 0 || def < 0 || kill < 0) {
-            errorMessage = "Point values must be non-negative.";
+            errorMessage = Component.translatable("duels_ld.screen.matchmaking_admin.error_points_non_negative");
             return;
         }
 
-        errorMessage = "";
+        errorMessage = Component.empty();
         ClientPlayNetworking.send(new UpdateMatchmakingSettingsPayload(
             v1Time, v1Hp, v2Time, v2Hp, off, sup, def, kill
         ));

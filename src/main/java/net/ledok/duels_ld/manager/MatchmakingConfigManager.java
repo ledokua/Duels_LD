@@ -4,7 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.ledok.duels_ld.DuelsLdMod;
-import net.minecraft.server.MinecraftServer;
+import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,8 +21,13 @@ public class MatchmakingConfigManager {
 
     public static void init() {
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
-            configFile = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
-                .resolve("matchmaking_config.json").toFile();
+            java.nio.file.Path dir = FabricLoader.getInstance().getConfigDir().resolve("duels_ld");
+            try {
+                java.nio.file.Files.createDirectories(dir);
+            } catch (IOException e) {
+                LOGGER.error("Failed to create config directory.", e);
+            }
+            configFile = dir.resolve("matchmaking_config.json").toFile();
             loadConfig();
         });
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> saveConfig());
@@ -67,6 +72,11 @@ public class MatchmakingConfigManager {
         public MatchSettings oneVOne = new MatchSettings(300, 0);
         public MatchSettings twoVTwo = new MatchSettings(300, 0);
         public PointWeights weights = new PointWeights(1.0, 1.0, 1.0, 5.0);
+        public EloSettings elo = new EloSettings(32, 1000);
+        public int mmrRangeStart = 100;
+        public int mmrRangeIncrease = 50;
+        public int mmrRangeIncreaseSeconds = 15;
+        public int mmrRangeMax = 400;
 
         public static MatchmakingConfig defaults() {
             return new MatchmakingConfig();
@@ -98,6 +108,18 @@ public class MatchmakingConfigManager {
             this.supportPerHeal = supportPerHeal;
             this.defensePerBlocked = defensePerBlocked;
             this.killBonus = killBonus;
+        }
+    }
+
+    public static class EloSettings {
+        public int kFactor;
+        public int startingRating;
+
+        public EloSettings() {}
+
+        public EloSettings(int kFactor, int startingRating) {
+            this.kFactor = kFactor;
+            this.startingRating = startingRating;
         }
     }
 }

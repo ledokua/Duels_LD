@@ -8,6 +8,7 @@ import net.ledok.duels_ld.network.OpenDuelScreenPayload;
 import net.ledok.duels_ld.network.OpenAdminGuiPayload;
 import net.ledok.duels_ld.network.SyncRequestsPayload;
 import net.ledok.duels_ld.network.SyncMatchmakingSettingsPayload;
+import net.ledok.duels_ld.network.SyncEloPayload;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.glfw.GLFW;
@@ -55,6 +56,14 @@ public class DuelsLdModClient implements ClientModInitializer {
                 MatchmakingAdminScreen screen = new MatchmakingAdminScreen();
                 context.client().setScreen(screen);
                 screen.applySettings(payload);
+            });
+        });
+
+        ClientPlayNetworking.registerGlobalReceiver(SyncEloPayload.TYPE, (payload, context) -> {
+            context.client().execute(() -> {
+                if (context.client().screen instanceof MatchmakingScreen screen) {
+                    screen.setElo(payload.elo1v1(), payload.elo2v2());
+                }
             });
         });
 

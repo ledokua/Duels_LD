@@ -17,7 +17,7 @@ public class DuelRequestScreen extends Screen {
     private final List<RequestEntryData> requests = new ArrayList<>();
 
     public DuelRequestScreen() {
-        super(Component.literal("Duel Requests"));
+        super(Component.translatable("duels_ld.screen.duel_requests.title"));
     }
 
     public void setRequests(List<RequestEntryData> newRequests) {
@@ -34,7 +34,7 @@ public class DuelRequestScreen extends Screen {
         this.requestList.refresh();
         this.addRenderableWidget(this.requestList);
         
-        this.addRenderableWidget(Button.builder(Component.literal("Close"), button -> this.onClose())
+        this.addRenderableWidget(Button.builder(Component.translatable("duels_ld.screen.duel_requests.close"), button -> this.onClose())
             .bounds(this.width / 2 - 100, this.height - 25, 200, 20)
             .build());
     }
@@ -78,12 +78,12 @@ public class DuelRequestScreen extends Screen {
 
             public RequestEntry(RequestEntryData data) {
                 this.data = data;
-                this.acceptButton = Button.builder(Component.literal("Accept"), button -> {
+                this.acceptButton = Button.builder(Component.translatable("duels_ld.screen.duel_requests.accept"), button -> {
                     ClientPlayNetworking.send(new AcceptRequestPayload(data.senderId));
                     DuelRequestScreen.this.onClose();
                 }).bounds(0, 0, 60, 20).build();
                 
-                this.declineButton = Button.builder(Component.literal("Decline"), button -> {
+                this.declineButton = Button.builder(Component.translatable("duels_ld.screen.duel_requests.decline"), button -> {
                     ClientPlayNetworking.send(new DeclineRequestPayload(data.senderId));
                     requests.remove(data);
                     refresh();
@@ -117,7 +117,7 @@ public class DuelRequestScreen extends Screen {
 
             @Override
             public Component getNarration() {
-                return Component.literal("Request from " + data.senderName);
+                return Component.translatable("duels_ld.screen.duel_requests.request_from", data.senderName);
             }
         }
     }

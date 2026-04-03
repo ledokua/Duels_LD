@@ -10,6 +10,8 @@ import net.ledok.duels_ld.manager.ConfigManager;
 import net.ledok.duels_ld.manager.DuelManager;
 import net.ledok.duels_ld.manager.MatchmakingConfigManager;
 import net.ledok.duels_ld.manager.MatchmakingManager;
+import net.ledok.duels_ld.manager.MMRManager;
+import net.ledok.duels_ld.manager.PartyManager;
 import net.ledok.duels_ld.manager.StatsManager;
 import net.ledok.duels_ld.network.AcceptRequestPayload;
 import net.ledok.duels_ld.network.DeclineRequestPayload;
@@ -17,6 +19,10 @@ import net.ledok.duels_ld.network.JoinQueuePayload;
 import net.ledok.duels_ld.network.LeaveQueuePayload;
 import net.ledok.duels_ld.network.OpenAdminGuiPayload;
 import net.ledok.duels_ld.network.OpenDuelScreenPayload;
+import net.ledok.duels_ld.network.PartyAcceptPayload;
+import net.ledok.duels_ld.network.PartyInvitePayload;
+import net.ledok.duels_ld.network.RequestEloPayload;
+import net.ledok.duels_ld.network.SyncEloPayload;
 import net.ledok.duels_ld.network.SyncRequestsPayload;
 import net.ledok.duels_ld.network.SyncMatchmakingSettingsPayload;
 import net.ledok.duels_ld.network.UpdateMatchmakingSettingsPayload;
@@ -31,20 +37,26 @@ public class DuelsLdMod implements ModInitializer {
     @Override
     public void onInitialize() {
         ItemRegistry.initialize();
-        ConfigManager.loadConfig();
-        StatsManager.init();
-        MatchmakingConfigManager.init();
-        ArenaManager.init();
-        
         PayloadTypeRegistry.playC2S().register(AcceptRequestPayload.TYPE, AcceptRequestPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(DeclineRequestPayload.TYPE, DeclineRequestPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(JoinQueuePayload.TYPE, JoinQueuePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(LeaveQueuePayload.TYPE, LeaveQueuePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(UpdateMatchmakingSettingsPayload.TYPE, UpdateMatchmakingSettingsPayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(RequestEloPayload.TYPE, RequestEloPayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(PartyInvitePayload.TYPE, PartyInvitePayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(PartyAcceptPayload.TYPE, PartyAcceptPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(OpenDuelScreenPayload.TYPE, OpenDuelScreenPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(SyncRequestsPayload.TYPE, SyncRequestsPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(OpenAdminGuiPayload.TYPE, OpenAdminGuiPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(SyncMatchmakingSettingsPayload.TYPE, SyncMatchmakingSettingsPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(SyncEloPayload.TYPE, SyncEloPayload.CODEC);
+
+        ConfigManager.loadConfig();
+        StatsManager.init();
+        MatchmakingConfigManager.init();
+        ArenaManager.init();
+        MMRManager.init();
+        PartyManager.init();
         
         DuelManager.init();
         BattleManager.init();

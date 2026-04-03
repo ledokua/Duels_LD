@@ -4,6 +4,7 @@
   "package": "net.ledok.duels_ld.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "PlayerDropMixin"
   ],
   "client": [
   ],

@@ -46,7 +46,7 @@ public class BattleManager {
             if (playerBackups.containsKey(player.getUUID())) {
                 if (activeBattle != null && isPlayerInBattle(player.getUUID())) {
                     player.setGameMode(GameType.SPECTATOR);
-                    player.sendSystemMessage(Component.literal("You reconnected to an ongoing battle as a spectator.").withStyle(ChatFormatting.YELLOW));
+                    player.sendSystemMessage(Component.translatable("duels_ld.battle.reconnect_spectator").withStyle(ChatFormatting.YELLOW));
                 } else {
                     restorePlayer(player);
                 }
@@ -109,17 +109,31 @@ public class BattleManager {
                 }
             }
             
-            float effectiveAmount = calculateEffectiveDamage(damagedPlayer, source, amount);
-            if (damagedPlayer.getHealth() - effectiveAmount <= 0) {
-                handlePlayerDeath(damagedPlayer.server, damagedPlayer.getUUID());
-                return false; 
-            }
-
             return true;
+        });
+
+        ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, amount) -> {
+            if (activeBattle == null || !(entity instanceof ServerPlayer player)) {
+                return true;
+            }
+            if (!isPlayerInBattle(player.getUUID())) {
+                return true;
+            }
+            LOGGER.info("[Duels] Battle prevent death: player={}, source={}, health={}",
+                player.getGameProfile().getName(),
+                source.getMsgId(),
+                player.getHealth());
+            player.setHealth(player.getMaxHealth());
+            handlePlayerDeath(player.server, player.getUUID());
+            return false;
         });
 
         ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> {
             if (activeBattle != null && entity instanceof ServerPlayer player && isPlayerInBattle(player.getUUID())) {
+                LOGGER.info("[Duels] Battle player death: player={}, source={}, health={}",
+                    player.getGameProfile().getName(),
+                    source.getMsgId(),
+                    player.getHealth());
                 handlePlayerDeath(player.server, player.getUUID());
             }
         });
@@ -146,9 +160,23 @@ public class BattleManager {
         activeBattle = new ActiveBattle(teamUUIDs, settings);
         
         Scoreboard scoreboard = server.getScoreboard();
+        ChatFormatting[] colors = new ChatFormatting[] {
+            ChatFormatting.RED,
+            ChatFormatting.BLUE,
+            ChatFormatting.GREEN,
+            ChatFormatting.YELLOW,
+            ChatFormatting.AQUA,
+            ChatFormatting.LIGHT_PURPLE,
+            ChatFormatting.GOLD,
+            ChatFormatting.WHITE
+        };
+        int colorIndex = 0;
         for (String teamName : teams.keySet()) {
             PlayerTeam team = scoreboard.addPlayerTeam(teamName);
             team.setAllowFriendlyFire(false);
+            team.setColor(colors[colorIndex % colors.length]);
+            team.setNameTagVisibility(net.minecraft.world.scores.Team.Visibility.HIDE_FOR_OTHER_TEAMS);
+            colorIndex++;
             for (ServerPlayer player : teams.get(teamName)) {
                 ActivityManager.setPlayerBusy(player.getUUID());
                 scoreboard.addPlayerToTeam(player.getScoreboardName(), team);
@@ -156,7 +184,10 @@ public class BattleManager {
                 
                 playerBackups.putIfAbsent(player.getUUID(), new PlayerBackup(player.gameMode.getGameModeForPlayer(), player.position(), player.level().dimension()));
                 player.setGameMode(GameType.ADVENTURE);
-                player.sendSystemMessage(Component.literal("Battle starting in 10 seconds!"));
+                player.setHealth(player.getMaxHealth());
+                player.getFoodData().setFoodLevel(20);
+                player.getFoodData().setSaturation(20.0f);
+                player.sendSystemMessage(Component.translatable("duels_ld.battle.starting_soon", 10));
                 activeBattle.setLastHealth(player.getUUID(), player.getHealth());
             }
         }
@@ -186,7 +217,7 @@ public class BattleManager {
 
         if (activeBattle.isCountdown()) {
             int seconds = activeBattle.getCountdownSeconds();
-            activeBattle.getBossBar().setName(Component.literal("Battle starting in " + seconds));
+            activeBattle.getBossBar().setName(Component.translatable("duels_ld.battle.boss_starting", seconds));
             activeBattle.getBossBar().setProgress((float)seconds / 10);
 
             // Freeze players
@@ -209,7 +240,8 @@ public class BattleManager {
                     activeBattle.setCountdown(false);
                     activeBattle.setStartTime(currentTime);
                     activeBattle.getBossBar().setColor(BossEvent.BossBarColor.BLUE);
-                    broadcastToAll(server, "FIGHT!");
+                    clearSpellCooldowns(server);
+                    broadcastToAll(server, Component.translatable("duels_ld.battle.fight"));
                 }
             }
         } else {
@@ -226,7 +258,8 @@ public class BattleManager {
                 return;
             }
 
-            activeBattle.getBossBar().setName(Component.literal(String.format("Time left %02d:%02d", remaining / 60, remaining % 60)));
+            String timeLeft = String.format("%02d:%02d", remaining / 60, remaining % 60);
+            activeBattle.getBossBar().setName(Component.translatable("duels_ld.battle.time_left", timeLeft));
             activeBattle.getBossBar().setProgress((float)remaining / activeBattle.getSettings().getDurationSeconds());
             
             tetherSpectators(server);
@@ -243,7 +276,7 @@ public class BattleManager {
         if (player != null) {
             player.setHealth(player.getMaxHealth());
             player.setGameMode(GameType.SPECTATOR);
-            player.sendSystemMessage(Component.literal("You have been eliminated! You are now a spectator."));
+            player.sendSystemMessage(Component.translatable("duels_ld.battle.eliminated"));
         }
         
         activeBattle.eliminatePlayer(playerUUID);
@@ -267,11 +300,19 @@ public class BattleManager {
         if (activeBattle == null) return;
 
         if (draw) {
-            broadcastToAll(server, "The battle has ended in a draw!");
+            broadcastToAll(server, Component.translatable("duels_ld.battle.draw"));
         } else if (winningTeamName != null) {
-            broadcastToAll(server, "Team " + winningTeamName + " has won the battle!");
+            for (Map.Entry<String, List<UUID>> entry : activeBattle.getTeams().entrySet()) {
+                boolean isWinner = entry.getKey().equals(winningTeamName);
+                for (UUID playerUUID : entry.getValue()) {
+                    ServerPlayer player = server.getPlayerList().getPlayer(playerUUID);
+                    if (player != null) {
+                        player.sendSystemMessage(Component.translatable(isWinner ? "duels_ld.battle.team_won" : "duels_ld.battle.team_lost"));
+                    }
+                }
+            }
         } else {
-            broadcastToAll(server, "The battle has ended!");
+            broadcastToAll(server, Component.translatable("duels_ld.battle.ended"));
         }
         
         Scoreboard scoreboard = server.getScoreboard();
@@ -306,6 +347,32 @@ public class BattleManager {
         }
 
         activeBattle.getBossBar().removeAllPlayers();
+        if (activeBattle.isMatchmaking() && !draw && winningTeamName != null) {
+            List<UUID> winners = activeBattle.getTeams().get(winningTeamName);
+            if (winners != null && winners.size() == 2) {
+                List<UUID> losers = new ArrayList<>();
+                for (Map.Entry<String, List<UUID>> entry : activeBattle.getTeams().entrySet()) {
+                    if (!entry.getKey().equals(winningTeamName)) {
+                        losers.addAll(entry.getValue());
+                    }
+                }
+                if (losers.size() == 2) {
+                    MMRManager.EloDelta2v2 delta = MMRManager.applyResult2v2WithDelta(winners.get(0), winners.get(1), losers.get(0), losers.get(1));
+                    for (UUID winnerId : winners) {
+                        ServerPlayer player = server.getPlayerList().getPlayer(winnerId);
+                        if (player != null) {
+                            player.sendSystemMessage(Component.translatable("duels_ld.battle.elo_gain", formatEloDelta(delta.winnerDelta)));
+                        }
+                    }
+                    for (UUID loserId : losers) {
+                        ServerPlayer player = server.getPlayerList().getPlayer(loserId);
+                        if (player != null) {
+                            player.sendSystemMessage(Component.translatable("duels_ld.battle.elo_loss", formatEloDelta(delta.loserDelta)));
+                        }
+                    }
+                }
+            }
+        }
         if (activeBattle.getArenaName() != null) {
             ArenaManager.markInactive(activeBattle.getArenaName());
         }
@@ -326,6 +393,10 @@ public class BattleManager {
             }
         }
         player.setHealth(player.getMaxHealth());
+    }
+
+    private static String formatEloDelta(int delta) {
+        return (delta > 0 ? "+" : "") + delta;
     }
     
     private static void tetherSpectators(MinecraftServer server) {
@@ -369,6 +440,12 @@ public class BattleManager {
         return activeBattle.getTeams().values().stream().anyMatch(list -> list.contains(playerUUID));
     }
 
+    public static boolean isPlayerInArena(ServerPlayer player) {
+        return activeBattle != null
+            && activeBattle.getArenaName() != null
+            && isPlayerInBattle(player.getUUID());
+    }
+
     private static boolean areOnSameTeam(UUID player1, UUID player2) {
         if (activeBattle == null) return false;
         String team1 = getTeamName(player1);
@@ -386,19 +463,17 @@ public class BattleManager {
         return null;
     }
     
-    private static void broadcastToAll(MinecraftServer server, String message) {
+    private static void broadcastToAll(MinecraftServer server, Component message) {
         if (activeBattle == null) return;
         
-        LOGGER.info("[Duels] " + message);
-
-        Component component = Component.literal(message);
+        LOGGER.info("[Duels] " + message.getString());
         Set<UUID> allPlayers = new HashSet<>();
         activeBattle.getTeams().values().forEach(allPlayers::addAll);
         
         for (UUID playerUUID : allPlayers) {
             ServerPlayer player = server.getPlayerList().getPlayer(playerUUID);
             if (player != null) {
-                player.sendSystemMessage(component);
+                player.sendSystemMessage(message);
             }
         }
     }
@@ -425,11 +500,21 @@ public class BattleManager {
         teams.put(teamB, List.of(p3, p4));
         boolean started = startBattle(server, teams, settings);
         if (started && activeBattle != null && arena != null) {
+            Scoreboard scoreboard = server.getScoreboard();
+            PlayerTeam teamOne = scoreboard.getPlayerTeam(teamA);
+            PlayerTeam teamTwo = scoreboard.getPlayerTeam(teamB);
+            if (teamOne != null) {
+                teamOne.setPlayerPrefix(Component.translatable("duels_ld.arena.prefix", arena.name));
+            }
+            if (teamTwo != null) {
+                teamTwo.setPlayerPrefix(Component.translatable("duels_ld.arena.prefix", arena.name));
+            }
             activeBattle.setArenaName(arena.name);
             activeBattle.setSpawnPosition(p1.getUUID(), t1a);
             activeBattle.setSpawnPosition(p2.getUUID(), t1b);
             activeBattle.setSpawnPosition(p3.getUUID(), t2a);
             activeBattle.setSpawnPosition(p4.getUUID(), t2b);
+            activeBattle.setMatchmaking(true);
         }
         return started;
     }
@@ -502,6 +587,23 @@ public class BattleManager {
         ServerLevel level = player.server.getLevel(arena.getDimensionKey());
         if (level != null) {
             player.teleportTo(level, spawn.x, spawn.y, spawn.z, player.getYRot(), player.getXRot());
+        }
+    }
+
+    private static void clearSpellCooldowns(MinecraftServer server) {
+        if (activeBattle == null || server == null) {
+            return;
+        }
+        for (List<UUID> team : activeBattle.getTeams().values()) {
+            for (UUID playerUUID : team) {
+                ServerPlayer player = server.getPlayerList().getPlayer(playerUUID);
+                if (player != null) {
+                    server.getCommands().performPrefixedCommand(
+                        server.createCommandSourceStack().withSuppressedOutput().withPermission(4),
+                        "spell_cooldown clear " + player.getGameProfile().getName()
+                    );
+                }
+            }
         }
     }
 

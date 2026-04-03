@@ -31,6 +31,7 @@ public class ActiveBattle {
     private final Map<UUID, Float> lastHealth = new ConcurrentHashMap<>();
     private final Map<UUID, net.minecraft.world.phys.Vec3> spawnPositions = new ConcurrentHashMap<>();
     private String arenaName;
+    private boolean matchmaking;
 
     public ActiveBattle(Map<String, List<UUID>> teams, BattleSettings settings) {
         this.teams = teams;
@@ -38,7 +39,7 @@ public class ActiveBattle {
         this.isCountdown = true;
         
         this.bossBar = new ServerBossEvent(
-            Component.literal("Battle starting in " + countdownSeconds),
+            Component.translatable("duels_ld.battle.boss_starting", countdownSeconds),
             BossEvent.BossBarColor.RED,
             BossEvent.BossBarOverlay.PROGRESS
         );
@@ -147,6 +148,14 @@ public class ActiveBattle {
 
     public void setArenaName(String arenaName) {
         this.arenaName = arenaName;
+    }
+
+    public boolean isMatchmaking() {
+        return matchmaking;
+    }
+
+    public void setMatchmaking(boolean matchmaking) {
+        this.matchmaking = matchmaking;
     }
 
     public void setSpawnPosition(UUID player, net.minecraft.world.phys.Vec3 pos) {

@@ -8,6 +8,7 @@ import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.ledok.duels_ld.DuelsLdMod;
 import net.ledok.duels_ld.network.AcceptRequestPayload;
 import net.ledok.duels_ld.network.DeclineRequestPayload;
 import net.ledok.duels_ld.network.OpenDuelScreenPayload;
@@ -51,7 +52,7 @@ public class DuelManager {
                 GameType originalGameMode = gameModeBackups.remove(player.getUUID());
                 if (originalGameMode != null) {
                     player.setGameMode(originalGameMode);
-                    player.sendSystemMessage(Component.literal("Your gamemode was restored after an incomplete duel.").withStyle(ChatFormatting.YELLOW));
+                    player.sendSystemMessage(Component.translatable("duels_ld.duel.restore_gamemode").withStyle(ChatFormatting.YELLOW));
                 }
             }
             if (duelBackups.containsKey(player.getUUID()) && !isInDuel(player)) {
@@ -126,12 +127,6 @@ public class DuelManager {
                             if (player.isBlocking()) {
                                 duel.getPoints(player.getUUID()).addDefense(effectiveAmount * weights.defensePerBlocked);
                             }
-                            float healthPct = (player.getHealth() - effectiveAmount) / player.getMaxHealth() * 100;
-                            if (healthPct <= duel.getSettings().getWinHpPercentage()) {
-                                UUID winner = attackerPlayer.getUUID().equals(player.getUUID()) ? getOpponentUUID(duel, player.getUUID()) : attackerPlayer.getUUID();
-                                endDuel(attackerPlayer.server, duel, false, winner);
-                                return false;
-                            }
                             return true;
                         }
                         return false;
@@ -150,22 +145,66 @@ public class DuelManager {
                              MatchmakingConfigManager.PointWeights weights = MatchmakingConfigManager.getConfig().weights;
                              duel.getPoints(player.getUUID()).addDefense(effectiveAmount * weights.defensePerBlocked);
                          }
-                         float healthPct = (player.getHealth() - effectiveAmount) / player.getMaxHealth() * 100;
-                         if (healthPct <= 0 || healthPct <= duel.getSettings().getWinHpPercentage()) {
-                            UUID winnerUUID = getOpponentUUID(duel, player.getUUID());
-                            endDuel(player.server, duel, false, winnerUUID);
-                            return false;
-                        }
                      }
                 }
             }
             return true;
         });
 
+        ServerLivingEntityEvents.AFTER_DAMAGE.register((entity, source, baseDamageTaken, damageTaken, blocked) -> {
+            if (!(entity instanceof ServerPlayer player)) {
+                return;
+            }
+            if (!isInDuel(player)) {
+                return;
+            }
+            ActiveDuel duel = getDuel(player);
+            if (duel == null || duel.isCountdown()) {
+                return;
+            }
+            int winHp = duel.getSettings().getWinHpPercentage();
+            if (winHp <= 0) {
+                return;
+            }
+            float healthPct = (player.getHealth() / player.getMaxHealth()) * 100.0f;
+            if (healthPct <= winHp && player.getHealth() > 0.0f) {
+                UUID winnerUUID = null;
+                Entity attacker = source.getEntity();
+                if (attacker instanceof ServerPlayer attackerPlayer) {
+                    winnerUUID = attackerPlayer.getUUID().equals(player.getUUID()) ? getOpponentUUID(duel, player.getUUID()) : attackerPlayer.getUUID();
+                } else {
+                    winnerUUID = getOpponentUUID(duel, player.getUUID());
+                }
+                endDuel(player.server, duel, false, winnerUUID);
+            }
+        });
+
+        ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, amount) -> {
+            if (!(entity instanceof ServerPlayer player) || !isInDuel(player)) {
+                return true;
+            }
+            ActiveDuel duel = getDuel(player);
+            if (duel == null) {
+                return true;
+            }
+            DuelsLdMod.LOGGER.info("[Duels] Duel prevent death: player={}, source={}, health={}",
+                player.getGameProfile().getName(),
+                source.getMsgId(),
+                player.getHealth());
+            UUID winnerUUID = getOpponentUUID(duel, player.getUUID());
+            player.setHealth(player.getMaxHealth());
+            endDuel(player.server, duel, false, winnerUUID);
+            return false;
+        });
+
         ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> {
             if (entity instanceof ServerPlayer player && isInDuel(player)) {
                 ActiveDuel duel = getDuel(player);
                 if (duel != null) {
+                    DuelsLdMod.LOGGER.info("[Duels] Duel player death: player={}, source={}, health={}",
+                        player.getGameProfile().getName(),
+                        source.getMsgId(),
+                        player.getHealth());
                     UUID winnerUUID = getOpponentUUID(duel, player.getUUID());
                     endDuel(player.server, duel, false, winnerUUID);
                 }
@@ -178,23 +217,28 @@ public class DuelManager {
 
     public static void sendRequest(ServerPlayer sender, ServerPlayer target, DuelSettings settings) {
         if (sender.getUUID().equals(target.getUUID())) {
-            sender.sendSystemMessage(Component.literal("You cannot duel yourself!"));
+            sender.sendSystemMessage(Component.translatable("duels_ld.duel.cannot_duel_self"));
             return;
         }
         
         if (ActivityManager.isPlayerBusy(sender.getUUID()) || ActivityManager.isPlayerBusy(target.getUUID())) {
-            sender.sendSystemMessage(Component.literal("One of the players is currently busy."));
+            sender.sendSystemMessage(Component.translatable("duels_ld.duel.player_busy"));
             return;
         }
 
         pendingRequests.computeIfAbsent(target.getUUID(), k -> new HashMap<>()).put(sender.getUUID(), new DuelRequest(sender.getUUID(), settings));
-        sender.sendSystemMessage(Component.literal("Duel request sent to " + target.getName().getString()));
+        sender.sendSystemMessage(Component.translatable("duels_ld.duel.request_sent", target.getName().getString()));
         
         String settingsStr = "";
-        if (settings.getDurationSeconds() != 120) settingsStr += " Time: " + settings.getDurationSeconds() + "s";
-        if (settings.getWinHpPercentage() != 0) settingsStr += " WinHP: " + settings.getWinHpPercentage() + "%";
+        if (settings.getDurationSeconds() != 120 || settings.getWinHpPercentage() != 0) {
+            settingsStr = " " + Component.translatable(
+                "duels_ld.duel.request_settings",
+                settings.getDurationSeconds(),
+                settings.getWinHpPercentage()
+            ).getString();
+        }
         
-        target.sendSystemMessage(Component.literal(sender.getName().getString() + " has requested to duel you." + settingsStr + " Type /duel accept to accept."));
+        target.sendSystemMessage(Component.translatable("duels_ld.duel.request_received", sender.getName().getString(), settingsStr));
     }
     
     public static void openRequestScreen(ServerPlayer player) {
@@ -209,8 +253,12 @@ public class DuelManager {
         
         for (DuelRequest req : requests.values()) {
             ServerPlayer sender = player.server.getPlayerList().getPlayer(req.getSender());
-            String senderName = sender != null ? sender.getName().getString() : "Unknown";
-            String settingsDesc = "Time: " + req.getSettings().getDurationSeconds() + "s, WinHP: " + req.getSettings().getWinHpPercentage() + "%";
+            String senderName = sender != null ? sender.getName().getString() : Component.translatable("duels_ld.duel.sender_unknown").getString();
+            String settingsDesc = Component.translatable(
+                "duels_ld.duel.request_settings",
+                req.getSettings().getDurationSeconds(),
+                req.getSettings().getWinHpPercentage()
+            ).getString();
             requestDataList.add(new SyncRequestsPayload.RequestData(req.getSender(), senderName, settingsDesc));
         }
         
@@ -230,12 +278,12 @@ public class DuelManager {
 
     public static void acceptRequest(ServerPlayer target, UUID senderUUID) {
         if (target.getUUID().equals(senderUUID)) {
-            target.sendSystemMessage(Component.literal("You cannot duel yourself."));
+            target.sendSystemMessage(Component.translatable("duels_ld.duel.cannot_duel_self"));
             return;
         }
 
         if (ActivityManager.isPlayerBusy(target.getUUID())) {
-            target.sendSystemMessage(Component.literal("You are currently busy."));
+            target.sendSystemMessage(Component.translatable("duels_ld.duel.target_busy"));
             return;
         }
         
@@ -243,7 +291,7 @@ public class DuelManager {
 
         Map<UUID, DuelRequest> requests = pendingRequests.get(target.getUUID());
         if (requests == null || !requests.containsKey(senderUUID)) {
-            target.sendSystemMessage(Component.literal("This duel request is no longer valid or has expired."));
+            target.sendSystemMessage(Component.translatable("duels_ld.duel.request_invalid"));
             return;
         }
         
@@ -252,18 +300,18 @@ public class DuelManager {
 
         ServerPlayer sender = target.server.getPlayerList().getPlayer(request.getSender());
         if (sender == null) {
-            target.sendSystemMessage(Component.literal("The player who requested the duel is no longer online."));
+            target.sendSystemMessage(Component.translatable("duels_ld.duel.requester_offline"));
             return;
         }
         
         if (ActivityManager.isPlayerBusy(sender.getUUID())) {
-            target.sendSystemMessage(Component.literal(sender.getName().getString() + " is currently busy."));
+            target.sendSystemMessage(Component.translatable("duels_ld.duel.requester_busy", sender.getName().getString()));
             pendingRequests.computeIfAbsent(target.getUUID(), k -> new HashMap<>()).put(senderUUID, request);
             return;
         }
         
         if (sender.distanceTo(target) > 50) {
-            target.sendSystemMessage(Component.literal("You are too far away from " + sender.getName().getString() + " (Max 50 blocks)."));
+            target.sendSystemMessage(Component.translatable("duels_ld.duel.too_far", sender.getName().getString(), 50));
             pendingRequests.computeIfAbsent(target.getUUID(), k -> new HashMap<>()).put(senderUUID, request);
             return;
         }
@@ -281,11 +329,11 @@ public class DuelManager {
             
             ServerPlayer sender = target.server.getPlayerList().getPlayer(senderUUID);
             if (sender != null) {
-                sender.sendSystemMessage(Component.literal(target.getName().getString() + " has declined your duel request."));
+                sender.sendSystemMessage(Component.translatable("duels_ld.duel.declined_sender", target.getName().getString()));
             }
-            target.sendSystemMessage(Component.literal("You have declined the duel request."));
+            target.sendSystemMessage(Component.translatable("duels_ld.duel.declined_target"));
         } else {
-            target.sendSystemMessage(Component.literal("You do not have a duel request from that player."));
+            target.sendSystemMessage(Component.translatable("duels_ld.duel.no_request_from"));
         }
     }
     
@@ -294,7 +342,7 @@ public class DuelManager {
         
         Map<UUID, DuelRequest> requests = pendingRequests.get(target.getUUID());
         if (requests == null || requests.isEmpty()) {
-            target.sendSystemMessage(Component.literal("You have no pending duel requests."));
+            target.sendSystemMessage(Component.translatable("duels_ld.duel.no_requests"));
             return;
         }
         
@@ -316,6 +364,12 @@ public class DuelManager {
         String team2Name = teamName + "_2";
         PlayerTeam team1 = scoreboard.addPlayerTeam(team1Name);
         PlayerTeam team2 = scoreboard.addPlayerTeam(team2Name);
+        team1.setAllowFriendlyFire(false);
+        team2.setAllowFriendlyFire(false);
+        team1.setColor(ChatFormatting.RED);
+        team2.setColor(ChatFormatting.BLUE);
+        team1.setNameTagVisibility(net.minecraft.world.scores.Team.Visibility.HIDE_FOR_OTHER_TEAMS);
+        team2.setNameTagVisibility(net.minecraft.world.scores.Team.Visibility.HIDE_FOR_OTHER_TEAMS);
         
         scoreboard.addPlayerToTeam(player1.getScoreboardName(), team1);
         scoreboard.addPlayerToTeam(player2.getScoreboardName(), team2);
@@ -336,8 +390,15 @@ public class DuelManager {
         duel.getBossBar().addPlayer(player1);
         duel.getBossBar().addPlayer(player2);
 
-        player1.sendSystemMessage(Component.literal("Duel starting in 10 seconds!"));
-        player2.sendSystemMessage(Component.literal("Duel starting in 10 seconds!"));
+        player1.setHealth(player1.getMaxHealth());
+        player2.setHealth(player2.getMaxHealth());
+        player1.getFoodData().setFoodLevel(20);
+        player2.getFoodData().setFoodLevel(20);
+        player1.getFoodData().setSaturation(20.0f);
+        player2.getFoodData().setSaturation(20.0f);
+
+        player1.sendSystemMessage(Component.translatable("duels_ld.duel.starting_soon", 10));
+        player2.sendSystemMessage(Component.translatable("duels_ld.duel.starting_soon", 10));
     }
 
     public static void startMatchmakingDuel(ServerPlayer player1, ServerPlayer player2, DuelSettings settings, ArenaManager.Arena arena, Vec3 spawn1, Vec3 spawn2) {
@@ -356,9 +417,19 @@ public class DuelManager {
         startDuel(player1, player2, settings);
         ActiveDuel duel = getDuel(player1);
         if (duel != null && arena != null) {
+            Scoreboard scoreboard = player1.getScoreboard();
+            PlayerTeam team1 = scoreboard.getPlayerTeam(duel.getTeamName() + "_1");
+            PlayerTeam team2 = scoreboard.getPlayerTeam(duel.getTeamName() + "_2");
+            if (team1 != null) {
+                team1.setPlayerPrefix(Component.translatable("duels_ld.arena.prefix", arena.name));
+            }
+            if (team2 != null) {
+                team2.setPlayerPrefix(Component.translatable("duels_ld.arena.prefix", arena.name));
+            }
             duel.setArenaName(arena.name);
             duel.setSpawnPosition(player1.getUUID(), spawn1);
             duel.setSpawnPosition(player2.getUUID(), spawn2);
+            duel.setMatchmaking(true);
         }
     }
     
@@ -402,12 +473,14 @@ public class DuelManager {
                     if (duel.getCountdownSeconds() <= 0) {
                         duel.setCountdown(false);
                         duel.setStartTime(currentTime);
-                        duel.getBossBar().setName(Component.literal("Duel Started!"));
+                        duel.getBossBar().setName(Component.translatable("duels_ld.duel.started"));
                         duel.getBossBar().setColor(BossEvent.BossBarColor.BLUE);
-                        p1.sendSystemMessage(Component.literal("FIGHT!"));
-                        p2.sendSystemMessage(Component.literal("FIGHT!"));
+                        clearSpellCooldowns(p1.server, p1);
+                        clearSpellCooldowns(p2.server, p2);
+                        p1.sendSystemMessage(Component.translatable("duels_ld.duel.fight"));
+                        p2.sendSystemMessage(Component.translatable("duels_ld.duel.fight"));
                     } else {
-                        duel.getBossBar().setName(Component.literal("Starting in " + duel.getCountdownSeconds()));
+                        duel.getBossBar().setName(Component.translatable("duels_ld.duel.boss_starting", duel.getCountdownSeconds()));
                         duel.getBossBar().setProgress((float)duel.getCountdownSeconds() / 10.0f);
                     }
                 }
@@ -425,7 +498,8 @@ public class DuelManager {
                     continue;
                 }
                 
-                duel.getBossBar().setName(Component.literal(String.format("Time left %02d:%02d", remaining / 60, remaining % 60)));
+                String timeLeft = String.format("%02d:%02d", remaining / 60, remaining % 60);
+                duel.getBossBar().setName(Component.translatable("duels_ld.duel.time_left", timeLeft));
                 duel.getBossBar().setProgress((float)remaining / duel.getSettings().getDurationSeconds());
             }
 
@@ -441,6 +515,14 @@ public class DuelManager {
     
     public static ActiveDuel getDuel(ServerPlayer player) {
         return activeDuels.get(player.getUUID());
+    }
+
+    public static boolean isPlayerInArena(ServerPlayer player) {
+        if (!isInDuel(player)) {
+            return false;
+        }
+        ActiveDuel duel = getDuel(player);
+        return duel != null && duel.getArenaName() != null;
     }
 
     private static void endDuel(MinecraftServer server, ActiveDuel duel, boolean draw, UUID winnerUUID) {
@@ -469,11 +551,11 @@ public class DuelManager {
 
         if (draw) {
             if (player1 != null) {
-                player1.sendSystemMessage(Component.literal("Duel ended in a draw!"));
+                player1.sendSystemMessage(Component.translatable("duels_ld.duel.draw"));
                 StatsManager.recordDraw(player1.getUUID());
             }
             if (player2 != null) {
-                player2.sendSystemMessage(Component.literal("Duel ended in a draw!"));
+                player2.sendSystemMessage(Component.translatable("duels_ld.duel.draw"));
                 StatsManager.recordDraw(player2.getUUID());
             }
         } else if (winnerUUID != null) {
@@ -485,11 +567,24 @@ public class DuelManager {
             MatchmakingConfigManager.PointWeights weights = MatchmakingConfigManager.getConfig().weights;
             duel.getPoints(winnerUUID).addOffense(weights.killBonus);
 
+            if (duel.isMatchmaking()) {
+                MMRManager.EloDelta1v1 delta = MMRManager.applyResult1v1WithDelta(winnerUUID, loserUUID);
+                ServerPlayer winner = server.getPlayerList().getPlayer(winnerUUID);
+                ServerPlayer loser = server.getPlayerList().getPlayer(loserUUID);
+                if (winner != null) {
+                    winner.sendSystemMessage(Component.translatable("duels_ld.duel.win_elo", formatEloDelta(delta.winnerDelta)));
+                }
+                if (loser != null) {
+                    loser.sendSystemMessage(Component.translatable("duels_ld.duel.loss_elo", formatEloDelta(delta.loserDelta)));
+                }
+                return;
+            }
+
             ServerPlayer winner = server.getPlayerList().getPlayer(winnerUUID);
             ServerPlayer loser = server.getPlayerList().getPlayer(loserUUID);
 
-            if (winner != null) winner.sendSystemMessage(Component.literal("You won the duel!"));
-            if (loser != null) loser.sendSystemMessage(Component.literal("You lost the duel!"));
+            if (winner != null) winner.sendSystemMessage(Component.translatable("duels_ld.duel.win"));
+            if (loser != null) loser.sendSystemMessage(Component.translatable("duels_ld.duel.loss"));
         }
 
         if (duel.getArenaName() != null) {
@@ -510,6 +605,10 @@ public class DuelManager {
                 player.teleportTo(level, backup.getPosition().x, backup.getPosition().y, backup.getPosition().z, player.getYRot(), player.getXRot());
             }
         }
+    }
+
+    private static String formatEloDelta(int delta) {
+        return (delta > 0 ? "+" : "") + delta;
     }
 
     private static void restorePlayerFromBackup(ServerPlayer player) {
@@ -584,6 +683,16 @@ public class DuelManager {
 
     private static UUID getOpponentUUID(ActiveDuel duel, UUID playerUUID) {
         return duel.getPlayer1().equals(playerUUID) ? duel.getPlayer2() : duel.getPlayer1();
+    }
+
+    private static void clearSpellCooldowns(MinecraftServer server, ServerPlayer player) {
+        if (server == null || player == null) {
+            return;
+        }
+        server.getCommands().performPrefixedCommand(
+            server.createCommandSourceStack().withSuppressedOutput().withPermission(4),
+            "spell_cooldown clear " + player.getGameProfile().getName()
+        );
     }
 
     private static void enforceArenaBounds(ActiveDuel duel, ServerPlayer p1, ServerPlayer p2) {
