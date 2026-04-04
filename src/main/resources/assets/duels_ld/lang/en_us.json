@@ -153,5 +153,12 @@
   "duels_ld.screen.matchmaking_admin.error_time_min": "Time must be at least 10 seconds.",
   "duels_ld.screen.matchmaking_admin.error_win_hp_range": "Win HP must be 0 to 100.",
   "duels_ld.screen.matchmaking_admin.error_points_non_negative": "Point values must be non-negative.",
-  "key.duels_ld.open_lobby": "Open Lobby"
+  "key.duels_ld.open_lobby": "Open Lobby",
+  "duels_ld.placeholder.leaderboard_1v1_header": "1v1 Elo Top 10",
+  "duels_ld.placeholder.leaderboard_2v2_header": "2v2 Elo Top 10",
+  "duels_ld.placeholder.arena_status_header": "Arena Status",
+  "duels_ld.placeholder.arena_status_free": "Free",
+  "duels_ld.placeholder.arena_status_occupied": "Occupied",
+  "duels_ld.placeholder.arena_status_line": "Arena %s -- %s",
+  "duels_ld.placeholder.arena_status_none": "No arenas defined."
 }

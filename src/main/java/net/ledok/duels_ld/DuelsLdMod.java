@@ -3,7 +3,9 @@ package net.ledok.duels_ld;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.loader.api.FabricLoader;
 import net.ledok.duels_ld.command.DuelCommand;
+import net.ledok.duels_ld.integration.LeaderboardPlaceholders;
 import net.ledok.duels_ld.manager.ArenaManager;
 import net.ledok.duels_ld.manager.BattleManager;
 import net.ledok.duels_ld.manager.ConfigManager;
@@ -61,6 +63,11 @@ public class DuelsLdMod implements ModInitializer {
         DuelManager.init();
         BattleManager.init();
         MatchmakingManager.init();
+        if (FabricLoader.getInstance().isModLoaded("placeholder-api")) {
+            LeaderboardPlaceholders.init();
+        } else {
+            LOGGER.info("Placeholder API not present; leaderboard placeholders are disabled.");
+        }
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             DuelCommand.register(dispatcher);

@@ -154,5 +154,12 @@
   "duels_ld.screen.matchmaking_admin.error_win_hp_range": "Win HP має бути від 0 до 100.",
   "duels_ld.screen.matchmaking_admin.error_points_non_negative": "Значення балів мають бути невід'ємними.",
 
-  "key.duels_ld.open_lobby": "Відкрити лобі"
+  "key.duels_ld.open_lobby": "Відкрити лобі",
+  "duels_ld.placeholder.leaderboard_1v1_header": "Топ 10 Elo 1v1",
+  "duels_ld.placeholder.leaderboard_2v2_header": "Топ 10 Elo 2v2",
+  "duels_ld.placeholder.arena_status_header": "Статус арен",
+  "duels_ld.placeholder.arena_status_free": "Вільна",
+  "duels_ld.placeholder.arena_status_occupied": "Зайнята",
+  "duels_ld.placeholder.arena_status_line": "Арена %s -- %s",
+  "duels_ld.placeholder.arena_status_none": "Арени не визначені."
 }

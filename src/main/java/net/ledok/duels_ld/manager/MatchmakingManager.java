@@ -112,6 +112,18 @@ public class MatchmakingManager {
         }
     }
 
+    public static int getQueued1v1Count() {
+        return queue1v1.size() + pending1v1.size() * 2;
+    }
+
+    public static int getQueued2v2Count() {
+        return queue2v2.size() + partyQueue2v2.size() * 2 + pending2v2.size() * 4;
+    }
+
+    public static int getQueuedTotalCount() {
+        return getQueued1v1Count() + getQueued2v2Count();
+    }
+
     private static void updateSettings(ServerPlayer player, UpdateMatchmakingSettingsPayload payload) {
         if (!player.hasPermissions(2)) {
             player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.no_permission_update"));
