@@ -6,6 +6,8 @@ import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.ledok.duels_ld.network.OpenDuelScreenPayload;
 import net.ledok.duels_ld.network.OpenAdminGuiPayload;
+import net.ledok.duels_ld.network.OpenLobbyRequestPayload;
+import net.ledok.duels_ld.network.OpenLobbyScreenPayload;
 import net.ledok.duels_ld.network.SyncRequestsPayload;
 import net.ledok.duels_ld.network.SyncMatchmakingSettingsPayload;
 import net.ledok.duels_ld.network.SyncEloPayload;
@@ -46,6 +48,12 @@ public class DuelsLdModClient implements ClientModInitializer {
                 context.client().setScreen(new MatchmakingAdminScreen());
             });
         });
+        
+        ClientPlayNetworking.registerGlobalReceiver(OpenLobbyScreenPayload.TYPE, (payload, context) -> {
+            context.client().execute(() -> {
+                context.client().setScreen(new MatchmakingScreen());
+            });
+        });
 
         ClientPlayNetworking.registerGlobalReceiver(SyncMatchmakingSettingsPayload.TYPE, (payload, context) -> {
             context.client().execute(() -> {
@@ -69,8 +77,8 @@ public class DuelsLdModClient implements ClientModInitializer {
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (OPEN_LOBBY_KEY.consumeClick()) {
-                if (client.screen == null) {
-                    client.setScreen(new MatchmakingScreen());
+                if (client.player != null && client.screen == null) {
+                    ClientPlayNetworking.send(new OpenLobbyRequestPayload());
                 }
             }
         });

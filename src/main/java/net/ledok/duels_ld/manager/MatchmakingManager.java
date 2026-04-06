@@ -5,6 +5,8 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.ledok.duels_ld.network.JoinQueuePayload;
 import net.ledok.duels_ld.network.LeaveQueuePayload;
+import net.ledok.duels_ld.network.OpenLobbyRequestPayload;
+import net.ledok.duels_ld.network.OpenLobbyScreenPayload;
 import net.ledok.duels_ld.network.UpdateMatchmakingSettingsPayload;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -39,6 +41,9 @@ public class MatchmakingManager {
         ServerPlayNetworking.registerGlobalReceiver(LeaveQueuePayload.TYPE, (payload, context) -> {
             context.server().execute(() -> leaveAllQueues(context.player()));
         });
+        ServerPlayNetworking.registerGlobalReceiver(OpenLobbyRequestPayload.TYPE, (payload, context) -> {
+            context.server().execute(() -> handleOpenLobbyRequest(context.player()));
+        });
         ServerPlayNetworking.registerGlobalReceiver(UpdateMatchmakingSettingsPayload.TYPE, (payload, context) -> {
             context.server().execute(() -> updateSettings(context.player(), payload));
         });
@@ -49,7 +54,6 @@ public class MatchmakingManager {
             player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.cannot_queue_busy"));
             return;
         }
-
         if (mode == JoinQueuePayload.MODE_1V1) {
             if (!containsEntry(queue1v1, player.getUUID())) {
                 queue1v1.add(new QueueEntry(player.getUUID()));
@@ -122,6 +126,14 @@ public class MatchmakingManager {
 
     public static int getQueuedTotalCount() {
         return getQueued1v1Count() + getQueued2v2Count();
+    }
+
+    private static void handleOpenLobbyRequest(ServerPlayer player) {
+        if (ActivityManager.isPlayerBusy(player.getUUID()) || DuelManager.isInDuel(player) || BattleManager.isPlayerInBattle(player.getUUID())) {
+            player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.cannot_open_busy"));
+            return;
+        }
+        ServerPlayNetworking.send(player, new OpenLobbyScreenPayload());
     }
 
     private static void updateSettings(ServerPlayer player, UpdateMatchmakingSettingsPayload payload) {

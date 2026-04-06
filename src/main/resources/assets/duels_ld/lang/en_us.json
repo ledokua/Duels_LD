@@ -55,6 +55,7 @@
   "duels_ld.matchmaking.pending_1v1": "1v1 match found. Waiting for a free arena.",
   "duels_ld.matchmaking.pending_2v2": "2v2 match found. Waiting for a free arena.",
   "duels_ld.matchmaking.cancel_unavailable": "Match cancelled due to player unavailable.",
+  "duels_ld.matchmaking.cannot_open_arenas": "You cannot open matchmaking while in a dungeon or mob arena.",
 
   "duels_ld.party.already_in_party": "You are already in a party.",
   "duels_ld.party.created": "Party created.",

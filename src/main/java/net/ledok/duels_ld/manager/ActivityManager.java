@@ -1,21 +1,21 @@
 package net.ledok.duels_ld.manager;
 
-import java.util.Set;
+import net.ledok.busylib.BusyState;
+
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class ActivityManager {
-    private static final Set<UUID> busyPlayers = ConcurrentHashMap.newKeySet();
+    private static final String BUSY_REASON = "duels_ld";
 
     public static boolean isPlayerBusy(UUID playerUUID) {
-        return busyPlayers.contains(playerUUID);
+        return BusyState.isBusy(playerUUID);
     }
 
     public static void setPlayerBusy(UUID playerUUID) {
-        busyPlayers.add(playerUUID);
+        BusyState.setBusy(playerUUID, BUSY_REASON);
     }
 
     public static void setPlayerFree(UUID playerUUID) {
-        busyPlayers.remove(playerUUID);
+        BusyState.clearBusy(playerUUID, BUSY_REASON);
     }
 }

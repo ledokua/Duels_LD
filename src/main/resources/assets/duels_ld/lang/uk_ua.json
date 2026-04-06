@@ -55,6 +55,7 @@
   "duels_ld.matchmaking.pending_1v1": "Знайдено матч 1v1. Очікування вільної арени.",
   "duels_ld.matchmaking.pending_2v2": "Знайдено матч 2v2. Очікування вільної арени.",
   "duels_ld.matchmaking.cancel_unavailable": "Матч скасовано через недоступність гравця.",
+  "duels_ld.matchmaking.cannot_open_arenas": "Ви не можете відкрити матчмейкінг, перебуваючи в підземеллі або на моб-арені.",
 
   "duels_ld.party.already_in_party": "Ви вже в групі.",
   "duels_ld.party.created": "Групу створено.",

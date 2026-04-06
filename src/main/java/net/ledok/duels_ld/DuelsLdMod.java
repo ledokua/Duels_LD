@@ -21,6 +21,8 @@ import net.ledok.duels_ld.network.JoinQueuePayload;
 import net.ledok.duels_ld.network.LeaveQueuePayload;
 import net.ledok.duels_ld.network.OpenAdminGuiPayload;
 import net.ledok.duels_ld.network.OpenDuelScreenPayload;
+import net.ledok.duels_ld.network.OpenLobbyRequestPayload;
+import net.ledok.duels_ld.network.OpenLobbyScreenPayload;
 import net.ledok.duels_ld.network.PartyAcceptPayload;
 import net.ledok.duels_ld.network.PartyInvitePayload;
 import net.ledok.duels_ld.network.RequestEloPayload;
@@ -47,11 +49,13 @@ public class DuelsLdMod implements ModInitializer {
         PayloadTypeRegistry.playC2S().register(RequestEloPayload.TYPE, RequestEloPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(PartyInvitePayload.TYPE, PartyInvitePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(PartyAcceptPayload.TYPE, PartyAcceptPayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(OpenLobbyRequestPayload.TYPE, OpenLobbyRequestPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(OpenDuelScreenPayload.TYPE, OpenDuelScreenPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(SyncRequestsPayload.TYPE, SyncRequestsPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(OpenAdminGuiPayload.TYPE, OpenAdminGuiPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(SyncMatchmakingSettingsPayload.TYPE, SyncMatchmakingSettingsPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(SyncEloPayload.TYPE, SyncEloPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(OpenLobbyScreenPayload.TYPE, OpenLobbyScreenPayload.CODEC);
 
         ConfigManager.loadConfig();
         StatsManager.init();
