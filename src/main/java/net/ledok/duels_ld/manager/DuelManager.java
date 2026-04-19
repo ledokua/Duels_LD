@@ -7,12 +7,7 @@ import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
-import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.ledok.duels_ld.DuelsLdMod;
-import net.ledok.duels_ld.network.AcceptRequestPayload;
-import net.ledok.duels_ld.network.DeclineRequestPayload;
-import net.ledok.duels_ld.network.OpenDuelScreenPayload;
-import net.ledok.duels_ld.network.SyncRequestsPayload;
 import net.minecraft.ChatFormatting;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.network.chat.Component;
@@ -35,13 +30,13 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class DuelManager {
-    private static final Map<UUID, Map<UUID, DuelRequest>> pendingRequests = new HashMap<>(); // Target -> {Sender -> Request}
     private static final Map<UUID, ActiveDuel> activeDuels = new ConcurrentHashMap<>();
     private static final Map<UUID, GameType> gameModeBackups = new ConcurrentHashMap<>();
     private static final Map<UUID, PlayerBackup> duelBackups = new ConcurrentHashMap<>();
     private static final String DUEL_TEAM_PREFIX = "duel_team_";
     private static int teamCounter = 0;
-    private static final long REQUEST_EXPIRATION_MS = 60000; // 60 seconds
+    private static final Map<UUID, Long> lastBoundsTeleport = new ConcurrentHashMap<>();
+    private static final long BOUNDS_TELEPORT_COOLDOWN_MS = 2000;
 
     public static void init() {
         ServerTickEvents.END_SERVER_TICK.register(DuelManager::onServerTick);
@@ -211,146 +206,6 @@ public class DuelManager {
             }
         });
         
-        ServerPlayNetworking.registerGlobalReceiver(AcceptRequestPayload.TYPE, (payload, context) -> context.server().execute(() -> acceptRequest(context.player(), payload.senderId())));
-        ServerPlayNetworking.registerGlobalReceiver(DeclineRequestPayload.TYPE, (payload, context) -> context.server().execute(() -> declineRequest(context.player(), payload.senderId())));
-    }
-
-    public static void sendRequest(ServerPlayer sender, ServerPlayer target, DuelSettings settings) {
-        if (sender.getUUID().equals(target.getUUID())) {
-            sender.sendSystemMessage(Component.translatable("duels_ld.duel.cannot_duel_self"));
-            return;
-        }
-        
-        if (ActivityManager.isPlayerBusy(sender.getUUID()) || ActivityManager.isPlayerBusy(target.getUUID())) {
-            sender.sendSystemMessage(Component.translatable("duels_ld.duel.player_busy"));
-            return;
-        }
-
-        pendingRequests.computeIfAbsent(target.getUUID(), k -> new HashMap<>()).put(sender.getUUID(), new DuelRequest(sender.getUUID(), settings));
-        sender.sendSystemMessage(Component.translatable("duels_ld.duel.request_sent", target.getName().getString()));
-        
-        String settingsStr = "";
-        if (settings.getDurationSeconds() != 120 || settings.getWinHpPercentage() != 0) {
-            settingsStr = " " + Component.translatable(
-                "duels_ld.duel.request_settings",
-                settings.getDurationSeconds(),
-                settings.getWinHpPercentage()
-            ).getString();
-        }
-        
-        target.sendSystemMessage(Component.translatable("duels_ld.duel.request_received", sender.getName().getString(), settingsStr));
-    }
-    
-    public static void openRequestScreen(ServerPlayer player) {
-        cleanupExpiredRequests(player.getUUID());
-        ServerPlayNetworking.send(player, new OpenDuelScreenPayload());
-        syncRequests(player);
-    }
-    
-    private static void syncRequests(ServerPlayer player) {
-        Map<UUID, DuelRequest> requests = pendingRequests.getOrDefault(player.getUUID(), Collections.emptyMap());
-        List<SyncRequestsPayload.RequestData> requestDataList = new ArrayList<>();
-        
-        for (DuelRequest req : requests.values()) {
-            ServerPlayer sender = player.server.getPlayerList().getPlayer(req.getSender());
-            String senderName = sender != null ? sender.getName().getString() : Component.translatable("duels_ld.duel.sender_unknown").getString();
-            String settingsDesc = Component.translatable(
-                "duels_ld.duel.request_settings",
-                req.getSettings().getDurationSeconds(),
-                req.getSettings().getWinHpPercentage()
-            ).getString();
-            requestDataList.add(new SyncRequestsPayload.RequestData(req.getSender(), senderName, settingsDesc));
-        }
-        
-        ServerPlayNetworking.send(player, new SyncRequestsPayload(requestDataList));
-    }
-    
-    private static void cleanupExpiredRequests(UUID targetUUID) {
-        Map<UUID, DuelRequest> requests = pendingRequests.get(targetUUID);
-        if (requests != null) {
-            long now = System.currentTimeMillis();
-            requests.values().removeIf(req -> now - req.getTimestamp() > REQUEST_EXPIRATION_MS);
-            if (requests.isEmpty()) {
-                pendingRequests.remove(targetUUID);
-            }
-        }
-    }
-
-    public static void acceptRequest(ServerPlayer target, UUID senderUUID) {
-        if (target.getUUID().equals(senderUUID)) {
-            target.sendSystemMessage(Component.translatable("duels_ld.duel.cannot_duel_self"));
-            return;
-        }
-
-        if (ActivityManager.isPlayerBusy(target.getUUID())) {
-            target.sendSystemMessage(Component.translatable("duels_ld.duel.target_busy"));
-            return;
-        }
-        
-        cleanupExpiredRequests(target.getUUID());
-
-        Map<UUID, DuelRequest> requests = pendingRequests.get(target.getUUID());
-        if (requests == null || !requests.containsKey(senderUUID)) {
-            target.sendSystemMessage(Component.translatable("duels_ld.duel.request_invalid"));
-            return;
-        }
-        
-        DuelRequest request = requests.remove(senderUUID);
-        if (requests.isEmpty()) pendingRequests.remove(target.getUUID());
-
-        ServerPlayer sender = target.server.getPlayerList().getPlayer(request.getSender());
-        if (sender == null) {
-            target.sendSystemMessage(Component.translatable("duels_ld.duel.requester_offline"));
-            return;
-        }
-        
-        if (ActivityManager.isPlayerBusy(sender.getUUID())) {
-            target.sendSystemMessage(Component.translatable("duels_ld.duel.requester_busy", sender.getName().getString()));
-            pendingRequests.computeIfAbsent(target.getUUID(), k -> new HashMap<>()).put(senderUUID, request);
-            return;
-        }
-        
-        if (sender.distanceTo(target) > 50) {
-            target.sendSystemMessage(Component.translatable("duels_ld.duel.too_far", sender.getName().getString(), 50));
-            pendingRequests.computeIfAbsent(target.getUUID(), k -> new HashMap<>()).put(senderUUID, request);
-            return;
-        }
-
-        startDuel(sender, target, request.getSettings());
-    }
-    
-    public static void declineRequest(ServerPlayer target, UUID senderUUID) {
-        Map<UUID, DuelRequest> requests = pendingRequests.get(target.getUUID());
-        if (requests != null && requests.containsKey(senderUUID)) {
-            requests.remove(senderUUID);
-            if (requests.isEmpty()) {
-                pendingRequests.remove(target.getUUID());
-            }
-            
-            ServerPlayer sender = target.server.getPlayerList().getPlayer(senderUUID);
-            if (sender != null) {
-                sender.sendSystemMessage(Component.translatable("duels_ld.duel.declined_sender", target.getName().getString()));
-            }
-            target.sendSystemMessage(Component.translatable("duels_ld.duel.declined_target"));
-        } else {
-            target.sendSystemMessage(Component.translatable("duels_ld.duel.no_request_from"));
-        }
-    }
-    
-    public static void acceptAnyRequest(ServerPlayer target) {
-        cleanupExpiredRequests(target.getUUID());
-        
-        Map<UUID, DuelRequest> requests = pendingRequests.get(target.getUUID());
-        if (requests == null || requests.isEmpty()) {
-            target.sendSystemMessage(Component.translatable("duels_ld.duel.no_requests"));
-            return;
-        }
-        
-        if (requests.size() == 1) {
-            acceptRequest(target, requests.keySet().iterator().next());
-        } else {
-            openRequestScreen(target);
-        }
     }
 
     private static void startDuel(ServerPlayer player1, ServerPlayer player2, DuelSettings settings) {
@@ -475,8 +330,6 @@ public class DuelManager {
                         duel.setStartTime(currentTime);
                         duel.getBossBar().setName(Component.translatable("duels_ld.duel.started"));
                         duel.getBossBar().setColor(BossEvent.BossBarColor.BLUE);
-                        clearSpellCooldowns(p1.server, p1);
-                        clearSpellCooldowns(p2.server, p2);
                         p1.sendSystemMessage(Component.translatable("duels_ld.duel.fight"));
                         p2.sendSystemMessage(Component.translatable("duels_ld.duel.fight"));
                     } else {
@@ -684,16 +537,6 @@ public class DuelManager {
         return duel.getPlayer1().equals(playerUUID) ? duel.getPlayer2() : duel.getPlayer1();
     }
 
-    private static void clearSpellCooldowns(MinecraftServer server, ServerPlayer player) {
-        if (server == null || player == null) {
-            return;
-        }
-        server.getCommands().performPrefixedCommand(
-            server.createCommandSourceStack().withSuppressedOutput().withPermission(4),
-            "spell_cooldown clear " + player.getGameProfile().getName()
-        );
-    }
-
     private static void enforceArenaBounds(ActiveDuel duel, ServerPlayer p1, ServerPlayer p2) {
         if (duel.getArenaName() == null) {
             return;
@@ -711,7 +554,7 @@ public class DuelManager {
             return;
         }
         if (!player.level().dimension().equals(arena.getDimensionKey())) {
-            teleportToSpawn(duel, arena, player);
+            maybeTeleportToSpawn(duel, arena, player);
             return;
         }
         double minX = Math.min(arena.pos1.getX(), arena.pos2.getX());
@@ -725,8 +568,18 @@ public class DuelManager {
         double y = player.getY();
         double z = player.getZ();
         if (x < minX || x > maxX || y < minY || y > maxY || z < minZ || z > maxZ) {
-            teleportToSpawn(duel, arena, player);
+            maybeTeleportToSpawn(duel, arena, player);
         }
+    }
+
+    private static void maybeTeleportToSpawn(ActiveDuel duel, ArenaManager.Arena arena, ServerPlayer player) {
+        long now = System.currentTimeMillis();
+        Long last = lastBoundsTeleport.get(player.getUUID());
+        if (last != null && now - last < BOUNDS_TELEPORT_COOLDOWN_MS) {
+            return;
+        }
+        lastBoundsTeleport.put(player.getUUID(), now);
+        teleportToSpawn(duel, arena, player);
     }
 
     private static void teleportToSpawn(ActiveDuel duel, ArenaManager.Arena arena, ServerPlayer player) {

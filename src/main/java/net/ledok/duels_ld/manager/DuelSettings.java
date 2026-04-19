@@ -1,7 +1,8 @@
 package net.ledok.duels_ld.manager;
 
 public class DuelSettings {
-    private int durationSeconds = 120; // Default 2 minutes
+    public static final int DEFAULT_DURATION_SECONDS = 120;
+    private int durationSeconds = DEFAULT_DURATION_SECONDS;
     private int winHpPercentage = 0; // Default 0% (death)
 
     public DuelSettings() {}

@@ -25,17 +25,6 @@ import java.util.concurrent.CompletableFuture;
 public class DuelCommand {
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("duel")
-            .then(Commands.literal("invite")
-                .then(Commands.argument("target", EntityArgument.player())
-                    .executes(DuelCommand::invite)
-                    .then(Commands.argument("args", StringArgumentType.greedyString())
-                        .suggests(DuelCommand::suggestArgs)
-                        .executes(DuelCommand::inviteWithArgs))))
-            .then(Commands.literal("accept")
-                .executes(DuelCommand::accept))
-            .then(Commands.literal("decline")
-                .then(Commands.argument("target", EntityArgument.player())
-                    .executes(DuelCommand::decline)))
             .then(Commands.literal("stats")
                 .executes(DuelCommand::stats))
             .then(Commands.literal("leaderboard")
@@ -113,19 +102,6 @@ public class DuelCommand {
                 .executes(DuelCommand::reloadConfig)));
     }
 
-    private static CompletableFuture<Suggestions> suggestArgs(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
-        String remaining = builder.getRemaining();
-        if (!remaining.contains("time:")) {
-            builder.suggest(remaining + "time:60s");
-            builder.suggest(remaining + "time:2m");
-        }
-        if (!remaining.contains("winhp:")) {
-            builder.suggest(remaining + "winhp:50%");
-            builder.suggest(remaining + "winhp:10%");
-        }
-        return builder.buildFuture();
-    }
-    
     private static CompletableFuture<Suggestions> suggestBattleArgs(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
         String remaining = builder.getRemaining();
         String[] parts = remaining.split(" ");
@@ -198,73 +174,6 @@ public class DuelCommand {
         return builder.buildFuture();
     }
 
-    private static int invite(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
-        return inviteInternal(context, "");
-    }
-
-    private static int inviteWithArgs(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
-        String args = StringArgumentType.getString(context, "args");
-        return inviteInternal(context, args);
-    }
-
-    private static int inviteInternal(CommandContext<CommandSourceStack> context, String args) throws CommandSyntaxException {
-        ServerPlayer sender = context.getSource().getPlayerOrException();
-        ServerPlayer target = EntityArgument.getPlayer(context, "target");
-        
-        DuelSettings settings = new DuelSettings();
-        
-        String[] parts = args.split(" ");
-        for (String part : parts) {
-            if (part.startsWith("time:")) {
-                String timeStr = part.substring(5);
-                int time = 120;
-                if (timeStr.endsWith("s")) {
-                    try { time = Integer.parseInt(timeStr.substring(0, timeStr.length() - 1)); } catch (NumberFormatException ignored) {}
-                } else if (timeStr.endsWith("m")) {
-                    try { time = Integer.parseInt(timeStr.substring(0, timeStr.length() - 1)) * 60; } catch (NumberFormatException ignored) {}
-                } else {
-                     try { time = Integer.parseInt(timeStr); } catch (NumberFormatException ignored) {}
-                }
-                settings.setDurationSeconds(time);
-            } else if (part.startsWith("winhp:")) {
-                String hpStr = part.substring(6);
-                int hp = 0; // Default to 0% (death) if parsing fails
-                try {
-                    if (hpStr.endsWith("%")) {
-                        hp = Integer.parseInt(hpStr.substring(0, hpStr.length() - 1));
-                    } else {
-                        hp = Integer.parseInt(hpStr);
-                    }
-                } catch (NumberFormatException ignored) {
-                    // hp remains 1
-                }
-                
-                if (hp < 0) {
-                    hp = 0;
-                } else if (hp > 100) {
-                    hp = 100;
-                }
-                settings.setWinHpPercentage(hp);
-            }
-        }
-        
-        DuelManager.sendRequest(sender, target, settings);
-        return 1;
-    }
-
-    private static int accept(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
-        ServerPlayer player = context.getSource().getPlayerOrException();
-        DuelManager.acceptAnyRequest(player);
-        return 1;
-    }
-    
-    private static int decline(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
-        ServerPlayer player = context.getSource().getPlayerOrException();
-        ServerPlayer target = EntityArgument.getPlayer(context, "target");
-        DuelManager.declineRequest(player, target.getUUID());
-        return 1;
-    }
-    
     private static int stats(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         ServerPlayer player = context.getSource().getPlayerOrException();
         PlayerStats stats = StatsManager.getStats(player.getUUID());

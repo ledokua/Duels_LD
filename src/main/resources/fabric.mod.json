@@ -10,9 +10,6 @@
   "icon": "assets/duels_ld/icon.png",
   "environment": "*",
   "entrypoints": {
-    "fabric-datagen": [
-      "net.ledok.duels_ld.client.DuelsLdModDataGenerator"
-    ],
     "client": [
       "net.ledok.duels_ld.client.DuelsLdModClient"
     ],
