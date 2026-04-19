@@ -577,14 +577,13 @@ public class DuelManager {
                 if (loser != null) {
                     loser.sendSystemMessage(Component.translatable("duels_ld.duel.loss_elo", formatEloDelta(delta.loserDelta)));
                 }
-                return;
+            } else {
+                ServerPlayer winner = server.getPlayerList().getPlayer(winnerUUID);
+                ServerPlayer loser = server.getPlayerList().getPlayer(loserUUID);
+
+                if (winner != null) winner.sendSystemMessage(Component.translatable("duels_ld.duel.win"));
+                if (loser != null) loser.sendSystemMessage(Component.translatable("duels_ld.duel.loss"));
             }
-
-            ServerPlayer winner = server.getPlayerList().getPlayer(winnerUUID);
-            ServerPlayer loser = server.getPlayerList().getPlayer(loserUUID);
-
-            if (winner != null) winner.sendSystemMessage(Component.translatable("duels_ld.duel.win"));
-            if (loser != null) loser.sendSystemMessage(Component.translatable("duels_ld.duel.loss"));
         }
 
         if (duel.getArenaName() != null) {
