@@ -7,8 +7,6 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.ledok.duels_ld.command.DuelCommand;
 import net.ledok.duels_ld.integration.LeaderboardPlaceholders;
 import net.ledok.duels_ld.manager.ArenaManager;
-import net.ledok.duels_ld.manager.BattleManager;
-import net.ledok.duels_ld.manager.ConfigManager;
 import net.ledok.duels_ld.manager.DuelManager;
 import net.ledok.duels_ld.manager.MatchmakingConfigManager;
 import net.ledok.duels_ld.manager.MatchmakingManager;
@@ -47,7 +45,6 @@ public class DuelsLdMod implements ModInitializer {
         PayloadTypeRegistry.playS2C().register(SyncEloPayload.TYPE, SyncEloPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(OpenLobbyScreenPayload.TYPE, OpenLobbyScreenPayload.CODEC);
 
-        ConfigManager.loadConfig();
         StatsManager.init();
         MatchmakingConfigManager.init();
         ArenaManager.init();
@@ -55,7 +52,6 @@ public class DuelsLdMod implements ModInitializer {
         PartyManager.init();
         
         DuelManager.init();
-        BattleManager.init();
         MatchmakingManager.init();
         if (FabricLoader.getInstance().isModLoaded("placeholder-api")) {
             LeaderboardPlaceholders.init();

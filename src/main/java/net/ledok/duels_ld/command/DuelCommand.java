@@ -35,11 +35,6 @@ public class DuelCommand {
                         return builder.buildFuture();
                     })
                     .executes(DuelCommand::leaderboard)))
-            .then(Commands.literal("battle")
-                .requires(source -> source.hasPermission(2) || (source.isPlayer() && ConfigManager.isPlayerAuthorized(source.getPlayer().getName().getString())))
-                .then(Commands.argument("args", StringArgumentType.greedyString())
-                    .suggests(DuelCommand::suggestBattleArgs)
-                    .executes(DuelCommand::startBattle)))
             .then(Commands.literal("queue")
                 .then(Commands.argument("mode", StringArgumentType.word())
                     .suggests((context, builder) -> {
@@ -97,81 +92,7 @@ public class DuelCommand {
                                 .executes(DuelCommand::arenaRemoveSpawn)))))
                 .then(Commands.literal("list")
                     .executes(DuelCommand::arenaList)))
-            .then(Commands.literal("reload")
-                .requires(source -> source.hasPermission(2))
-                .executes(DuelCommand::reloadConfig)));
-    }
-
-    private static CompletableFuture<Suggestions> suggestBattleArgs(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
-        String remaining = builder.getRemaining();
-        String[] parts = remaining.split(" ");
-        String lastPart = parts.length > 0 ? parts[parts.length - 1] : "";
-
-        // Determine the prefix to keep
-        String prefix = "";
-        if (remaining.lastIndexOf(' ') != -1) {
-            prefix = remaining.substring(0, remaining.lastIndexOf(' ') + 1);
-        }
-
-        // Determine context: are we adding players to a team?
-        boolean addingPlayers = false;
-        for (int i = parts.length - 1; i >= 0; i--) {
-            if (parts[i].endsWith(":")) {
-                addingPlayers = true;
-                break;
-            }
-            if (parts[i].equalsIgnoreCase("time:")) {
-                break;
-            }
-        }
-
-        if (remaining.endsWith(" ")) {
-            // After a space, suggest new tokens
-            prefix = remaining;
-            lastPart = "";
-            
-            // Suggest players if we are in a team block
-            if (addingPlayers) {
-                for (ServerPlayer player : context.getSource().getServer().getPlayerList().getPlayers()) {
-                    builder.suggest(prefix + player.getName().getString());
-                }
-            }
-            // Always suggest new team and time
-            int teamCount = 0;
-            for (String p : parts) {
-                if (p.endsWith(":")) teamCount++;
-            }
-            builder.suggest(prefix + "team" + (teamCount + 1) + ":");
-            if (!remaining.contains("time:")) {
-                builder.suggest(prefix + "time:");
-            }
-
-        } else {
-            // Completing a token
-            if (addingPlayers) {
-                // Suggest players
-                for (ServerPlayer player : context.getSource().getServer().getPlayerList().getPlayers()) {
-                    if (player.getName().getString().toLowerCase().startsWith(lastPart.toLowerCase())) {
-                        builder.suggest(prefix + player.getName().getString());
-                    }
-                }
-            }
-            
-            // Suggest new team or time
-            int teamCount = 0;
-            for (String p : parts) {
-                if (p.endsWith(":")) teamCount++;
-            }
-            String nextTeam = "team" + (teamCount + 1) + ":";
-            if (nextTeam.startsWith(lastPart.toLowerCase())) {
-                builder.suggest(prefix + nextTeam);
-            }
-            if ("time:".startsWith(lastPart.toLowerCase()) && !remaining.contains("time:")) {
-                builder.suggest(prefix + "time:");
-            }
-        }
-
-        return builder.buildFuture();
+            );
     }
 
     private static int stats(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
@@ -221,79 +142,6 @@ public class DuelCommand {
         return 1;
     }
     
-    private static int startBattle(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
-        String args = StringArgumentType.getString(context, "args");
-        CommandSourceStack source = context.getSource();
-        
-        Map<String, List<ServerPlayer>> teams = new HashMap<>();
-        BattleSettings settings = new BattleSettings();
-        Set<UUID> assignedPlayers = new HashSet<>();
-        
-        String[] parts = args.split(" ");
-        String currentTeam = null;
-        
-        for (String part : parts) {
-            if (part.endsWith(":")) {
-                currentTeam = part.substring(0, part.length() - 1);
-                teams.put(currentTeam, new ArrayList<>());
-            } else if (currentTeam != null) {
-                if (part.startsWith("time:")) {
-                    String timeStr = part.substring(5);
-                    int time = 300;
-                    if (timeStr.endsWith("s")) {
-                        try { time = Integer.parseInt(timeStr.substring(0, timeStr.length() - 1)); } catch (NumberFormatException ignored) {}
-                    } else if (timeStr.endsWith("m")) {
-                        try { time = Integer.parseInt(timeStr.substring(0, timeStr.length() - 1)) * 60; } catch (NumberFormatException ignored) {}
-                    }
-                    settings.setDurationSeconds(time);
-                    currentTeam = null; 
-                } else {
-                    try {
-                        ServerPlayer player = null;
-                        for(ServerPlayer p : source.getServer().getPlayerList().getPlayers()){
-                            if(p.getName().getString().equalsIgnoreCase(part)){
-                                player = p;
-                                break;
-                            }
-                        }
-
-                        if(player != null){
-                            if (!assignedPlayers.add(player.getUUID())) {
-                                source.sendFailure(Component.translatable("duels_ld.command.battle.player_multiple_teams", player.getName().getString()));
-                                return 0;
-                            }
-                            teams.get(currentTeam).add(player);
-                        } else {
-                            source.sendFailure(Component.translatable("duels_ld.command.player_not_found", part));
-                        }
-
-                    } catch (Exception e) {
-                        source.sendFailure(Component.translatable("duels_ld.command.invalid_player_name", part));
-                    }
-                }
-            }
-        }
-        
-        if (teams.size() < 2) {
-            source.sendFailure(Component.translatable("duels_ld.command.battle.needs_two_teams"));
-            return 0;
-        }
-        
-        if (BattleManager.startBattle(source.getServer(), teams, settings)) {
-            source.sendSuccess(() -> Component.translatable("duels_ld.command.battle.started"), true);
-        } else {
-            source.sendFailure(Component.translatable("duels_ld.command.battle.already_running"));
-        }
-
-        return 1;
-    }
-    
-    private static int reloadConfig(CommandContext<CommandSourceStack> context) {
-        ConfigManager.loadConfig();
-        context.getSource().sendSuccess(() -> Component.translatable("duels_ld.command.config_reloaded"), true);
-        return 1;
-    }
-
     private static int queue(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         ServerPlayer player = context.getSource().getPlayerOrException();
         String mode = StringArgumentType.getString(context, "mode");

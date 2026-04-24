@@ -31,6 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class DuelManager {
     private static final Map<UUID, ActiveDuel> activeDuels = new ConcurrentHashMap<>();
+    private static final Map<UUID, ActiveTeamDuel> activeTeamDuels = new ConcurrentHashMap<>();
     private static final Map<UUID, PlayerBackup> duelBackups = new ConcurrentHashMap<>();
     private static final String DUEL_TEAM_PREFIX = "duel_team_";
     private static final Map<UUID, Long> lastBoundsTeleport = new ConcurrentHashMap<>();
@@ -50,16 +51,31 @@ public class DuelManager {
         
         AttackEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
             if (player instanceof ServerPlayer serverPlayer && entity instanceof ServerPlayer targetPlayer) {
+                ActiveTeamDuel attackerTeamDuel = getTeamDuel(serverPlayer);
+                ActiveTeamDuel targetTeamDuel = getTeamDuel(targetPlayer);
+                if (attackerTeamDuel != null || targetTeamDuel != null) {
+                    if (attackerTeamDuel == null || targetTeamDuel == null || attackerTeamDuel != targetTeamDuel) {
+                        return InteractionResult.FAIL;
+                    }
+                    if (attackerTeamDuel.isCountdown()) {
+                        return InteractionResult.FAIL;
+                    }
+                    if (attackerTeamDuel.getTeam(serverPlayer.getUUID()) == attackerTeamDuel.getTeam(targetPlayer.getUUID())
+                        && !serverPlayer.getUUID().equals(targetPlayer.getUUID())) {
+                        return InteractionResult.FAIL;
+                    }
+                    return InteractionResult.PASS;
+                }
                 if (isInDuel(serverPlayer) && isInDuel(targetPlayer)) {
                     ActiveDuel duel = getDuel(serverPlayer);
                     if (duel != null && duel.isCountdown()) {
                         return InteractionResult.FAIL;
                     }
                     if (duel != null && (!duel.getPlayer1().equals(targetPlayer.getUUID()) && !duel.getPlayer2().equals(targetPlayer.getUUID()))) {
-                         return InteractionResult.FAIL;
+                        return InteractionResult.FAIL;
                     }
                 } else if (isInDuel(serverPlayer) || isInDuel(targetPlayer)) {
-                     return InteractionResult.FAIL;
+                    return InteractionResult.FAIL;
                 }
             } else if (player instanceof ServerPlayer serverPlayer && isInDuel(serverPlayer)) {
                  // Allow attacking mobs
@@ -99,7 +115,43 @@ public class DuelManager {
 
         ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> {
             if (entity instanceof ServerPlayer player) {
+                ActiveTeamDuel teamDuel = getTeamDuel(player);
                 Entity attacker = source.getEntity();
+                if (teamDuel != null) {
+                    if (teamDuel.isCountdown() || teamDuel.isEliminated(player.getUUID())) {
+                        return false;
+                    }
+                    if (attacker instanceof ServerPlayer attackerPlayer) {
+                        ActiveTeamDuel attackerTeamDuel = getTeamDuel(attackerPlayer);
+                        if (attackerTeamDuel != teamDuel) {
+                            teamDuel.markForEnd(true, 0);
+                            return false;
+                        }
+                        if (teamDuel.isEliminated(attackerPlayer.getUUID())) {
+                            return false;
+                        }
+                        int attackedTeam = teamDuel.getTeam(player.getUUID());
+                        int attackerTeam = teamDuel.getTeam(attackerPlayer.getUUID());
+                        if (attackedTeam == attackerTeam && !attackerPlayer.getUUID().equals(player.getUUID())) {
+                            return false;
+                        }
+                        MatchmakingConfigManager.PointWeights weights = MatchmakingConfigManager.getConfig().weights;
+                        float effectiveAmount = calculateEffectiveDamage(player, source, amount);
+                        if (!attackerPlayer.getUUID().equals(player.getUUID()) && effectiveAmount > 0) {
+                            teamDuel.getPoints(attackerPlayer.getUUID()).addOffense(effectiveAmount * weights.offensePerDamage);
+                        }
+                        if (player.isBlocking()) {
+                            teamDuel.getPoints(player.getUUID()).addDefense(effectiveAmount * weights.defensePerBlocked);
+                        }
+                        return true;
+                    }
+                    float effectiveAmount = calculateEffectiveDamage(player, source, amount);
+                    if (player.isBlocking()) {
+                        MatchmakingConfigManager.PointWeights weights = MatchmakingConfigManager.getConfig().weights;
+                        teamDuel.getPoints(player.getUUID()).addDefense(effectiveAmount * weights.defensePerBlocked);
+                    }
+                    return true;
+                }
                 if (attacker instanceof ServerPlayer attackerPlayer) {
                      if (isInDuel(player) && isInDuel(attackerPlayer)) {
                         ActiveDuel duel = getDuel(player);
@@ -172,6 +224,12 @@ public class DuelManager {
         ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, amount) -> {
             if (!(entity instanceof ServerPlayer player) || !isInDuel(player)) {
                 return true;
+            }
+            ActiveTeamDuel teamDuel = getTeamDuel(player);
+            if (teamDuel != null) {
+                player.setHealth(player.getMaxHealth());
+                handleTeamPlayerDeath(player.server, teamDuel, player.getUUID());
+                return false;
             }
             ActiveDuel duel = getDuel(player);
             if (duel == null) {
@@ -265,6 +323,113 @@ public class DuelManager {
             duel.setMatchmaking(true);
         }
     }
+
+    public static void startMatchmakingDuel2v2(MinecraftServer server, ServerPlayer p1, ServerPlayer p2, ServerPlayer p3, ServerPlayer p4,
+                                                DuelSettings settings, ArenaManager.Arena arena, Vec3 t1a, Vec3 t1b, Vec3 t2a, Vec3 t2b) {
+        duelBackups.putIfAbsent(p1.getUUID(), new PlayerBackup(p1.gameMode.getGameModeForPlayer(), p1.position(), p1.level().dimension()));
+        duelBackups.putIfAbsent(p2.getUUID(), new PlayerBackup(p2.gameMode.getGameModeForPlayer(), p2.position(), p2.level().dimension()));
+        duelBackups.putIfAbsent(p3.getUUID(), new PlayerBackup(p3.gameMode.getGameModeForPlayer(), p3.position(), p3.level().dimension()));
+        duelBackups.putIfAbsent(p4.getUUID(), new PlayerBackup(p4.gameMode.getGameModeForPlayer(), p4.position(), p4.level().dimension()));
+
+        if (arena != null) {
+            ServerLevel level = server.getLevel(arena.getDimensionKey());
+            if (level != null) {
+                p1.teleportTo(level, t1a.x, t1a.y, t1a.z, p1.getYRot(), p1.getXRot());
+                p2.teleportTo(level, t1b.x, t1b.y, t1b.z, p2.getYRot(), p2.getXRot());
+                p3.teleportTo(level, t2a.x, t2a.y, t2a.z, p3.getYRot(), p3.getXRot());
+                p4.teleportTo(level, t2b.x, t2b.y, t2b.z, p4.getYRot(), p4.getXRot());
+            }
+        }
+
+        ActivityManager.setPlayerBusy(p1.getUUID());
+        ActivityManager.setPlayerBusy(p2.getUUID());
+        ActivityManager.setPlayerBusy(p3.getUUID());
+        ActivityManager.setPlayerBusy(p4.getUUID());
+
+        Scoreboard scoreboard = server.getScoreboard();
+        String teamName = buildTeamBaseName(scoreboard);
+
+        String team1Name = teamName + "_1";
+        String team2Name = teamName + "_2";
+        PlayerTeam team1 = scoreboard.addPlayerTeam(team1Name);
+        PlayerTeam team2 = scoreboard.addPlayerTeam(team2Name);
+        team1.setAllowFriendlyFire(false);
+        team2.setAllowFriendlyFire(false);
+        team1.setColor(ChatFormatting.RED);
+        team2.setColor(ChatFormatting.BLUE);
+        team1.setNameTagVisibility(net.minecraft.world.scores.Team.Visibility.HIDE_FOR_OTHER_TEAMS);
+        team2.setNameTagVisibility(net.minecraft.world.scores.Team.Visibility.HIDE_FOR_OTHER_TEAMS);
+        scoreboard.addPlayerToTeam(p1.getScoreboardName(), team1);
+        scoreboard.addPlayerToTeam(p2.getScoreboardName(), team1);
+        scoreboard.addPlayerToTeam(p3.getScoreboardName(), team2);
+        scoreboard.addPlayerToTeam(p4.getScoreboardName(), team2);
+
+        p1.setGameMode(GameType.ADVENTURE);
+        p2.setGameMode(GameType.ADVENTURE);
+        p3.setGameMode(GameType.ADVENTURE);
+        p4.setGameMode(GameType.ADVENTURE);
+
+        Map<UUID, Float> startHealth = new HashMap<>();
+        startHealth.put(p1.getUUID(), p1.getHealth());
+        startHealth.put(p2.getUUID(), p2.getHealth());
+        startHealth.put(p3.getUUID(), p3.getHealth());
+        startHealth.put(p4.getUUID(), p4.getHealth());
+        ActiveTeamDuel duel = new ActiveTeamDuel(
+            List.of(p1.getUUID(), p2.getUUID()),
+            List.of(p3.getUUID(), p4.getUUID()),
+            settings,
+            teamName,
+            startHealth
+        );
+        for (UUID playerId : duel.allPlayers()) {
+            activeTeamDuels.put(playerId, duel);
+        }
+
+        duel.getBossBar().addPlayer(p1);
+        duel.getBossBar().addPlayer(p2);
+        duel.getBossBar().addPlayer(p3);
+        duel.getBossBar().addPlayer(p4);
+
+        p1.setHealth(p1.getMaxHealth());
+        p2.setHealth(p2.getMaxHealth());
+        p3.setHealth(p3.getMaxHealth());
+        p4.setHealth(p4.getMaxHealth());
+        p1.getFoodData().setFoodLevel(20);
+        p2.getFoodData().setFoodLevel(20);
+        p3.getFoodData().setFoodLevel(20);
+        p4.getFoodData().setFoodLevel(20);
+        p1.getFoodData().setSaturation(20.0f);
+        p2.getFoodData().setSaturation(20.0f);
+        p3.getFoodData().setSaturation(20.0f);
+        p4.getFoodData().setSaturation(20.0f);
+
+        p1.sendSystemMessage(Component.translatable("duels_ld.duel.starting_soon", 10));
+        p2.sendSystemMessage(Component.translatable("duels_ld.duel.starting_soon", 10));
+        p3.sendSystemMessage(Component.translatable("duels_ld.duel.starting_soon", 10));
+        p4.sendSystemMessage(Component.translatable("duels_ld.duel.starting_soon", 10));
+
+        duel.setFreezePosition(p1.getUUID(), p1.position());
+        duel.setFreezePosition(p2.getUUID(), p2.position());
+        duel.setFreezePosition(p3.getUUID(), p3.position());
+        duel.setFreezePosition(p4.getUUID(), p4.position());
+
+        if (arena != null) {
+            PlayerTeam scoreboardTeam1 = scoreboard.getPlayerTeam(team1Name);
+            PlayerTeam scoreboardTeam2 = scoreboard.getPlayerTeam(team2Name);
+            if (scoreboardTeam1 != null) {
+                scoreboardTeam1.setPlayerPrefix(Component.translatable("duels_ld.arena.prefix", arena.name));
+            }
+            if (scoreboardTeam2 != null) {
+                scoreboardTeam2.setPlayerPrefix(Component.translatable("duels_ld.arena.prefix", arena.name));
+            }
+            duel.setArenaName(arena.name);
+            duel.setSpawnPosition(p1.getUUID(), t1a);
+            duel.setSpawnPosition(p2.getUUID(), t1b);
+            duel.setSpawnPosition(p3.getUUID(), t2a);
+            duel.setSpawnPosition(p4.getUUID(), t2b);
+            duel.setMatchmaking(true);
+        }
+    }
     
     private static void onServerTick(MinecraftServer server) {
         long currentTime = System.currentTimeMillis();
@@ -346,22 +511,30 @@ public class DuelManager {
             updateSupportPoints(duel, p1);
             updateSupportPoints(duel, p2);
         }
+
+        processActiveTeamDuels(server, currentTime);
     }
     
     public static boolean isInDuel(ServerPlayer player) {
-        return activeDuels.containsKey(player.getUUID());
+        UUID playerId = player.getUUID();
+        return activeDuels.containsKey(playerId) || activeTeamDuels.containsKey(playerId);
     }
     
     public static ActiveDuel getDuel(ServerPlayer player) {
         return activeDuels.get(player.getUUID());
     }
 
+    private static ActiveTeamDuel getTeamDuel(ServerPlayer player) {
+        return activeTeamDuels.get(player.getUUID());
+    }
+
     public static boolean isPlayerInArena(ServerPlayer player) {
-        if (!isInDuel(player)) {
-            return false;
-        }
         ActiveDuel duel = getDuel(player);
-        return duel != null && duel.getArenaName() != null;
+        if (duel != null && duel.getArenaName() != null) {
+            return true;
+        }
+        ActiveTeamDuel teamDuel = getTeamDuel(player);
+        return teamDuel != null && teamDuel.getArenaName() != null;
     }
 
     private static void endDuel(MinecraftServer server, ActiveDuel duel, boolean draw, UUID winnerUUID) {
@@ -385,10 +558,10 @@ public class DuelManager {
         ServerPlayer player1 = server.getPlayerList().getPlayer(duel.getPlayer1());
         ServerPlayer player2 = server.getPlayerList().getPlayer(duel.getPlayer2());
 
-        restorePlayer(player1, duel);
-        restorePlayer(player2, duel);
-        restoreHealth(player1, duel);
-        restoreHealth(player2, duel);
+        restorePlayer(player1, duel.isMatchmaking());
+        restorePlayer(player2, duel.isMatchmaking());
+        restoreHealth(player1, duel.getPlayer1StartHp());
+        restoreHealth(player2, duel.getPlayer2StartHp());
 
         if (draw) {
             if (player1 != null) {
@@ -431,15 +604,96 @@ public class DuelManager {
             ArenaManager.markInactive(duel.getArenaName());
         }
     }
+
+    private static void endTeamDuel(MinecraftServer server, ActiveTeamDuel duel, boolean draw, int winningTeam) {
+        Scoreboard scoreboard = server.getScoreboard();
+        PlayerTeam team1 = scoreboard.getPlayerTeam(duel.getTeamNameBase() + "_1");
+        PlayerTeam team2 = scoreboard.getPlayerTeam(duel.getTeamNameBase() + "_2");
+        if (team1 != null) {
+            scoreboard.removePlayerTeam(team1);
+        }
+        if (team2 != null) {
+            scoreboard.removePlayerTeam(team2);
+        }
+
+        List<UUID> allPlayers = duel.allPlayers();
+        for (UUID id : allPlayers) {
+            activeTeamDuels.remove(id);
+            lastBoundsTeleport.remove(id);
+            ActivityManager.setPlayerFree(id);
+        }
+
+        duel.getBossBar().removeAllPlayers();
+        duel.getBossBar().setVisible(false);
+
+        for (UUID id : allPlayers) {
+            ServerPlayer player = server.getPlayerList().getPlayer(id);
+            restorePlayer(player, duel.isMatchmaking());
+            restoreHealth(player, duel.getStartHealth(id));
+        }
+
+        if (draw) {
+            for (UUID id : allPlayers) {
+                StatsManager.recordDraw(id);
+                ServerPlayer player = server.getPlayerList().getPlayer(id);
+                if (player != null) {
+                    player.sendSystemMessage(Component.translatable("duels_ld.duel.draw"));
+                }
+            }
+        } else {
+            List<UUID> winners = winningTeam == 1 ? duel.getTeam1() : duel.getTeam2();
+            List<UUID> losers = winningTeam == 1 ? duel.getTeam2() : duel.getTeam1();
+            for (UUID id : winners) {
+                StatsManager.recordWin(id);
+            }
+            for (UUID id : losers) {
+                StatsManager.recordLoss(id);
+            }
+            if (duel.isMatchmaking() && winners.size() >= 2 && losers.size() >= 2) {
+                MMRManager.EloDelta2v2 delta = MMRManager.applyResult2v2WithDelta(
+                    winners.get(0), winners.get(1), losers.get(0), losers.get(1)
+                );
+                for (UUID id : winners) {
+                    ServerPlayer player = server.getPlayerList().getPlayer(id);
+                    if (player != null) {
+                        player.sendSystemMessage(Component.translatable("duels_ld.duel.win_elo", formatEloDelta(delta.winnerDelta)));
+                    }
+                }
+                for (UUID id : losers) {
+                    ServerPlayer player = server.getPlayerList().getPlayer(id);
+                    if (player != null) {
+                        player.sendSystemMessage(Component.translatable("duels_ld.duel.loss_elo", formatEloDelta(delta.loserDelta)));
+                    }
+                }
+            } else {
+                for (UUID id : winners) {
+                    ServerPlayer player = server.getPlayerList().getPlayer(id);
+                    if (player != null) {
+                        player.sendSystemMessage(Component.translatable("duels_ld.duel.win"));
+                    }
+                }
+                for (UUID id : losers) {
+                    ServerPlayer player = server.getPlayerList().getPlayer(id);
+                    if (player != null) {
+                        player.sendSystemMessage(Component.translatable("duels_ld.duel.loss"));
+                    }
+                }
+            }
+        }
+
+        if (duel.getArenaName() != null) {
+            ArenaManager.markInactive(duel.getArenaName());
+        }
+    }
     
-    private static void restorePlayer(ServerPlayer player, ActiveDuel duel) {
+    private static void restorePlayer(ServerPlayer player, boolean shouldTeleportFromBackup) {
         if (player == null) return;
 
         PlayerBackup backup = duelBackups.remove(player.getUUID());
         if (backup != null) {
             player.setGameMode(backup.getGameMode());
             ServerLevel level = player.server.getLevel(backup.getDimension());
-            if (duel.isMatchmaking() && level != null) {
+            if (shouldTeleportFromBackup && level != null) {
                 player.teleportTo(level, backup.getPosition().x, backup.getPosition().y, backup.getPosition().z, player.getYRot(), player.getXRot());
             }
         }
@@ -462,10 +716,8 @@ public class DuelManager {
         }
     }
     
-    private static void restoreHealth(ServerPlayer player, ActiveDuel duel) {
+    private static void restoreHealth(ServerPlayer player, float startHp) {
         if (player == null) return;
-
-        float startHp = player.getUUID().equals(duel.getPlayer1()) ? duel.getPlayer1StartHp() : duel.getPlayer2StartHp();
         float maxHp = player.getMaxHealth();
 
         // Keep post-duel health from dropping below a floor, but do not heal above half-max.
@@ -524,7 +776,168 @@ public class DuelManager {
         return duel.getPlayer1().equals(playerUUID) ? duel.getPlayer2() : duel.getPlayer1();
     }
 
+    private static void processActiveTeamDuels(MinecraftServer server, long currentTime) {
+        Set<ActiveTeamDuel> processed = new HashSet<>();
+        for (ActiveTeamDuel duel : activeTeamDuels.values()) {
+            if (!processed.add(duel)) {
+                continue;
+            }
+
+            ActiveTeamDuel.EndRequest pendingEnd = duel.consumePendingEndRequest();
+            if (pendingEnd != null) {
+                endTeamDuel(server, duel, pendingEnd.isDraw(), pendingEnd.getWinningTeam());
+                continue;
+            }
+
+            if (duel.isCountdown()) {
+                for (UUID playerId : duel.allPlayers()) {
+                    ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+                    if (player == null) {
+                        continue;
+                    }
+                    maybeEnforceCountdownFreeze(duel, player);
+                    player.setDeltaMovement(0, 0, 0);
+                    player.hurtMarked = true;
+                }
+
+                duel.incrementCountdownTicks();
+                if (duel.getCountdownTicks() >= 20) {
+                    duel.resetCountdownTicks();
+                    duel.decrementCountdown();
+                    if (duel.getCountdownSeconds() <= 0) {
+                        duel.setCountdown(false);
+                        duel.setStartTime(currentTime);
+                        duel.getBossBar().setName(Component.translatable("duels_ld.duel.started"));
+                        duel.getBossBar().setColor(BossEvent.BossBarColor.BLUE);
+                        for (UUID playerId : duel.allPlayers()) {
+                            ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+                            if (player != null) {
+                                player.sendSystemMessage(Component.translatable("duels_ld.duel.fight"));
+                            }
+                        }
+                    } else {
+                        duel.getBossBar().setName(Component.translatable("duels_ld.duel.boss_starting", duel.getCountdownSeconds()));
+                        duel.getBossBar().setProgress((float) duel.getCountdownSeconds() / 10.0f);
+                    }
+                }
+            } else {
+                for (UUID playerId : duel.allPlayers()) {
+                    if (duel.isEliminated(playerId)) {
+                        continue;
+                    }
+                    ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+                    if (player == null) {
+                        handleTeamPlayerDeath(server, duel, playerId);
+                    }
+                }
+                if (!isTeamDuelActive(duel)) {
+                    continue;
+                }
+
+                long elapsed = (currentTime - duel.getStartTime()) / 1000;
+                long remaining = duel.getSettings().getDurationSeconds() - elapsed;
+                if (remaining <= 0) {
+                    int winningTeam = pickWinningTeamByPoints(duel);
+                    if (winningTeam == 0) {
+                        endTeamDuel(server, duel, true, 0);
+                    } else {
+                        endTeamDuel(server, duel, false, winningTeam);
+                    }
+                    continue;
+                }
+                String timeLeft = String.format("%02d:%02d", remaining / 60, remaining % 60);
+                duel.getBossBar().setName(Component.translatable("duels_ld.duel.time_left", timeLeft));
+                duel.getBossBar().setProgress((float) remaining / duel.getSettings().getDurationSeconds());
+            }
+
+            if (duel.isMatchmaking()) {
+                enforceArenaBounds(duel, server);
+            }
+            updateSupportPoints(duel, server);
+        }
+    }
+
+    private static void handleTeamPlayerDeath(MinecraftServer server, ActiveTeamDuel duel, UUID playerId) {
+        if (!isTeamDuelActive(duel) || duel.isEliminated(playerId)) {
+            return;
+        }
+        duel.eliminate(playerId);
+        ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+        if (player != null) {
+            player.setHealth(player.getMaxHealth());
+            player.setGameMode(GameType.SPECTATOR);
+        }
+        boolean team1Alive = duel.hasAlivePlayersInTeam(1);
+        boolean team2Alive = duel.hasAlivePlayersInTeam(2);
+        if (!team1Alive && !team2Alive) {
+            endTeamDuel(server, duel, true, 0);
+            return;
+        }
+        if (!team1Alive) {
+            endTeamDuel(server, duel, false, 2);
+            return;
+        }
+        if (!team2Alive) {
+            endTeamDuel(server, duel, false, 1);
+        }
+    }
+
+    private static boolean isTeamDuelActive(ActiveTeamDuel duel) {
+        for (UUID playerId : duel.allPlayers()) {
+            if (activeTeamDuels.get(playerId) == duel) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int pickWinningTeamByPoints(ActiveTeamDuel duel) {
+        double team1Score = 0.0;
+        double team2Score = 0.0;
+        for (UUID id : duel.getTeam1()) {
+            team1Score += duel.getPoints(id).getTotal();
+        }
+        for (UUID id : duel.getTeam2()) {
+            team2Score += duel.getPoints(id).getTotal();
+        }
+        if (team1Score == team2Score) {
+            return 0;
+        }
+        return team1Score > team2Score ? 1 : 2;
+    }
+
+    private static void updateSupportPoints(ActiveTeamDuel duel, MinecraftServer server) {
+        MatchmakingConfigManager.PointWeights weights = MatchmakingConfigManager.getConfig().weights;
+        for (UUID playerId : duel.allPlayers()) {
+            if (duel.isEliminated(playerId)) {
+                continue;
+            }
+            ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+            if (player == null) {
+                continue;
+            }
+            float last = duel.getLastHealth(playerId);
+            float current = player.getHealth();
+            if (current > last) {
+                duel.getPoints(playerId).addSupport((current - last) * weights.supportPerHeal);
+            }
+            duel.setLastHealth(playerId, current);
+        }
+    }
+
     private static void maybeEnforceCountdownFreeze(ActiveDuel duel, ServerPlayer player) {
+        Vec3 frozenPos = duel.getFreezePosition(player.getUUID());
+        if (frozenPos == null) {
+            frozenPos = player.position();
+            duel.setFreezePosition(player.getUUID(), frozenPos);
+            return;
+        }
+        if (player.position().distanceToSqr(frozenPos) > COUNTDOWN_FREEZE_THRESHOLD_SQR) {
+            player.teleportTo(frozenPos.x, frozenPos.y, frozenPos.z);
+        }
+    }
+
+    private static void maybeEnforceCountdownFreeze(ActiveTeamDuel duel, ServerPlayer player) {
         Vec3 frozenPos = duel.getFreezePosition(player.getUUID());
         if (frozenPos == null) {
             frozenPos = player.position();
@@ -557,6 +970,41 @@ public class DuelManager {
         }
         enforceArenaBoundsForPlayer(duel, arena, p1);
         enforceArenaBoundsForPlayer(duel, arena, p2);
+    }
+
+    private static void enforceArenaBounds(ActiveTeamDuel duel, MinecraftServer server) {
+        if (duel.getArenaName() == null) {
+            return;
+        }
+        ArenaManager.Arena arena = ArenaManager.getArena(duel.getArenaName());
+        if (arena == null || arena.pos1 == null || arena.pos2 == null) {
+            return;
+        }
+        for (UUID playerId : duel.allPlayers()) {
+            if (duel.isEliminated(playerId)) {
+                continue;
+            }
+            ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+            if (player == null) {
+                continue;
+            }
+            if (!player.level().dimension().equals(arena.getDimensionKey())) {
+                maybeTeleportToSpawn(duel, arena, player);
+                continue;
+            }
+            double minX = Math.min(arena.pos1.getX(), arena.pos2.getX());
+            double maxX = Math.max(arena.pos1.getX(), arena.pos2.getX()) + 1;
+            double minY = Math.min(arena.pos1.getY(), arena.pos2.getY());
+            double maxY = Math.max(arena.pos1.getY(), arena.pos2.getY()) + 1;
+            double minZ = Math.min(arena.pos1.getZ(), arena.pos2.getZ());
+            double maxZ = Math.max(arena.pos1.getZ(), arena.pos2.getZ()) + 1;
+            double x = player.getX();
+            double y = player.getY();
+            double z = player.getZ();
+            if (x < minX || x > maxX || y < minY || y > maxY || z < minZ || z > maxZ) {
+                maybeTeleportToSpawn(duel, arena, player);
+            }
+        }
     }
 
     private static void enforceArenaBoundsForPlayer(ActiveDuel duel, ArenaManager.Arena arena, ServerPlayer player) {
@@ -592,7 +1040,28 @@ public class DuelManager {
         teleportToSpawn(duel, arena, player);
     }
 
+    private static void maybeTeleportToSpawn(ActiveTeamDuel duel, ArenaManager.Arena arena, ServerPlayer player) {
+        long now = System.currentTimeMillis();
+        Long last = lastBoundsTeleport.get(player.getUUID());
+        if (last != null && now - last < BOUNDS_TELEPORT_COOLDOWN_MS) {
+            return;
+        }
+        lastBoundsTeleport.put(player.getUUID(), now);
+        teleportToSpawn(duel, arena, player);
+    }
+
     private static void teleportToSpawn(ActiveDuel duel, ArenaManager.Arena arena, ServerPlayer player) {
+        Vec3 spawn = duel.getSpawnPosition(player.getUUID());
+        if (spawn == null) {
+            return;
+        }
+        ServerLevel level = player.server.getLevel(arena.getDimensionKey());
+        if (level != null) {
+            player.teleportTo(level, spawn.x, spawn.y, spawn.z, player.getYRot(), player.getXRot());
+        }
+    }
+
+    private static void teleportToSpawn(ActiveTeamDuel duel, ArenaManager.Arena arena, ServerPlayer player) {
         Vec3 spawn = duel.getSpawnPosition(player.getUUID());
         if (spawn == null) {
             return;

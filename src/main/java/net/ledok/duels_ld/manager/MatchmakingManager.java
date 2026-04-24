@@ -50,7 +50,7 @@ public class MatchmakingManager {
     }
 
     public static void joinQueue(ServerPlayer player, int mode) {
-        if (ActivityManager.isPlayerBusy(player.getUUID()) || DuelManager.isInDuel(player) || BattleManager.isPlayerInBattle(player.getUUID())) {
+        if (ActivityManager.isPlayerBusy(player.getUUID()) || DuelManager.isInDuel(player)) {
             player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.cannot_queue_busy"));
             return;
         }
@@ -129,7 +129,7 @@ public class MatchmakingManager {
     }
 
     private static void handleOpenLobbyRequest(ServerPlayer player) {
-        if (ActivityManager.isPlayerBusy(player.getUUID()) || DuelManager.isInDuel(player) || BattleManager.isPlayerInBattle(player.getUUID())) {
+        if (ActivityManager.isPlayerBusy(player.getUUID()) || DuelManager.isInDuel(player)) {
             player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.cannot_open_busy"));
             return;
         }
@@ -331,10 +331,11 @@ public class MatchmakingManager {
         pending2v2.poll();
         ArenaManager.markActive(arena.name);
 
-        BattleSettings settings = new BattleSettings();
+        DuelSettings settings = new DuelSettings();
         MatchmakingConfigManager.MatchmakingConfig config = MatchmakingConfigManager.getConfig();
         settings.setDurationSeconds(config.twoVTwo.durationSeconds);
-        BattleManager.startMatchmakingBattle(server, p1, p2, p3, p4, settings,
+        settings.setWinHpPercentage(config.twoVTwo.winHpPercentage);
+        DuelManager.startMatchmakingDuel2v2(server, p1, p2, p3, p4, settings,
             arena,
             t1.get(0).getCenter(),
             t1.get(1).getCenter(),
@@ -508,10 +509,11 @@ public class MatchmakingManager {
         }
 
         ArenaManager.markActive(arena.name);
-        BattleSettings settings = new BattleSettings();
+        DuelSettings settings = new DuelSettings();
         MatchmakingConfigManager.MatchmakingConfig config = MatchmakingConfigManager.getConfig();
         settings.setDurationSeconds(config.twoVTwo.durationSeconds);
-        BattleManager.startMatchmakingBattle(server, p1, p2, p3, p4, settings,
+        settings.setWinHpPercentage(config.twoVTwo.winHpPercentage);
+        DuelManager.startMatchmakingDuel2v2(server, p1, p2, p3, p4, settings,
             arena,
             t1.get(0).getCenter(),
             t1.get(1).getCenter(),

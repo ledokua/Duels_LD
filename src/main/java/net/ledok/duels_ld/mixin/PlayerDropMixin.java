@@ -1,6 +1,5 @@
 package net.ledok.duels_ld.mixin;
 
-import net.ledok.duels_ld.manager.BattleManager;
 import net.ledok.duels_ld.manager.DuelManager;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -59,6 +58,6 @@ public abstract class PlayerDropMixin {
         if (!((Object) this instanceof ServerPlayer player)) {
             return false;
         }
-        return DuelManager.isPlayerInArena(player) || BattleManager.isPlayerInArena(player);
+        return DuelManager.isPlayerInArena(player);
     }
 }
