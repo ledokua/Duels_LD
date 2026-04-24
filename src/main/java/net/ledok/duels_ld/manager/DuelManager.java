@@ -31,27 +31,20 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class DuelManager {
     private static final Map<UUID, ActiveDuel> activeDuels = new ConcurrentHashMap<>();
-    private static final Map<UUID, GameType> gameModeBackups = new ConcurrentHashMap<>();
     private static final Map<UUID, PlayerBackup> duelBackups = new ConcurrentHashMap<>();
     private static final String DUEL_TEAM_PREFIX = "duel_team_";
-    private static int teamCounter = 0;
     private static final Map<UUID, Long> lastBoundsTeleport = new ConcurrentHashMap<>();
     private static final long BOUNDS_TELEPORT_COOLDOWN_MS = 2000;
+    private static final double COUNTDOWN_FREEZE_THRESHOLD_SQR = 0.25;
 
     public static void init() {
         ServerTickEvents.END_SERVER_TICK.register(DuelManager::onServerTick);
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             ServerPlayer player = handler.getPlayer();
-            if (gameModeBackups.containsKey(player.getUUID())) {
-                GameType originalGameMode = gameModeBackups.remove(player.getUUID());
-                if (originalGameMode != null) {
-                    player.setGameMode(originalGameMode);
-                    player.sendSystemMessage(Component.translatable("duels_ld.duel.restore_gamemode").withStyle(ChatFormatting.YELLOW));
-                }
-            }
             if (duelBackups.containsKey(player.getUUID()) && !isInDuel(player)) {
                 restorePlayerFromBackup(player);
+                player.sendSystemMessage(Component.translatable("duels_ld.duel.restore_gamemode").withStyle(ChatFormatting.YELLOW));
             }
         });
         
@@ -128,7 +121,9 @@ public class DuelManager {
                     } else if (isInDuel(player) || isInDuel(attackerPlayer)) {
                         if (isInDuel(player)) {
                              ActiveDuel duel = getDuel(player);
-                             endDuel(player.server, duel, true, null);
+                             if (duel != null) {
+                                 duel.markForEnd(true, null);
+                             }
                         }
                         return false;
                     }
@@ -191,20 +186,6 @@ public class DuelManager {
             endDuel(player.server, duel, false, winnerUUID);
             return false;
         });
-
-        ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> {
-            if (entity instanceof ServerPlayer player && isInDuel(player)) {
-                ActiveDuel duel = getDuel(player);
-                if (duel != null) {
-                    DuelsLdMod.LOGGER.info("[Duels] Duel player death: player={}, source={}, health={}",
-                        player.getGameProfile().getName(),
-                        source.getMsgId(),
-                        player.getHealth());
-                    UUID winnerUUID = getOpponentUUID(duel, player.getUUID());
-                    endDuel(player.server, duel, false, winnerUUID);
-                }
-            }
-        });
         
     }
 
@@ -212,8 +193,8 @@ public class DuelManager {
         ActivityManager.setPlayerBusy(player1.getUUID());
         ActivityManager.setPlayerBusy(player2.getUUID());
         
-        String teamName = DUEL_TEAM_PREFIX + teamCounter++;
         Scoreboard scoreboard = player1.getScoreboard();
+        String teamName = buildTeamBaseName(scoreboard);
         
         String team1Name = teamName + "_1";
         String team2Name = teamName + "_2";
@@ -229,18 +210,17 @@ public class DuelManager {
         scoreboard.addPlayerToTeam(player1.getScoreboardName(), team1);
         scoreboard.addPlayerToTeam(player2.getScoreboardName(), team2);
         
-        GameType p1Gm = player1.gameMode.getGameModeForPlayer();
-        GameType p2Gm = player2.gameMode.getGameModeForPlayer();
-        
-        gameModeBackups.put(player1.getUUID(), p1Gm);
-        gameModeBackups.put(player2.getUUID(), p2Gm);
+        duelBackups.putIfAbsent(player1.getUUID(), new PlayerBackup(player1.gameMode.getGameModeForPlayer(), player1.position(), player1.level().dimension()));
+        duelBackups.putIfAbsent(player2.getUUID(), new PlayerBackup(player2.gameMode.getGameModeForPlayer(), player2.position(), player2.level().dimension()));
         
         player1.setGameMode(GameType.ADVENTURE);
         player2.setGameMode(GameType.ADVENTURE);
 
-        ActiveDuel duel = new ActiveDuel(player1.getUUID(), player2.getUUID(), settings, teamName, player1.getHealth(), player2.getHealth(), p1Gm, p2Gm);
+        ActiveDuel duel = new ActiveDuel(player1.getUUID(), player2.getUUID(), settings, teamName, player1.getHealth(), player2.getHealth());
         activeDuels.put(player1.getUUID(), duel);
         activeDuels.put(player2.getUUID(), duel);
+        duel.setFreezePosition(player1.getUUID(), player1.position());
+        duel.setFreezePosition(player2.getUUID(), player2.position());
         
         duel.getBossBar().addPlayer(player1);
         duel.getBossBar().addPlayer(player2);
@@ -260,8 +240,6 @@ public class DuelManager {
         if (arena != null) {
             duelBackups.put(player1.getUUID(), new PlayerBackup(player1.gameMode.getGameModeForPlayer(), player1.position(), player1.level().dimension()));
             duelBackups.put(player2.getUUID(), new PlayerBackup(player2.gameMode.getGameModeForPlayer(), player2.position(), player2.level().dimension()));
-            gameModeBackups.put(player1.getUUID(), player1.gameMode.getGameModeForPlayer());
-            gameModeBackups.put(player2.getUUID(), player2.gameMode.getGameModeForPlayer());
 
             ServerLevel level = player1.server.getLevel(arena.getDimensionKey());
             if (level != null) {
@@ -312,9 +290,15 @@ public class DuelManager {
                 continue;
             }
 
+            ActiveDuel.EndRequest pendingEndRequest = duel.consumePendingEndRequest();
+            if (pendingEndRequest != null) {
+                endDuel(server, duel, pendingEndRequest.isDraw(), pendingEndRequest.getWinnerUUID());
+                continue;
+            }
+
             if (duel.isCountdown()) {
-                p1.teleportTo(p1.getX(), p1.getY(), p1.getZ());
-                p2.teleportTo(p2.getX(), p2.getY(), p2.getZ());
+                maybeEnforceCountdownFreeze(duel, p1);
+                maybeEnforceCountdownFreeze(duel, p2);
                 p1.setDeltaMovement(0, 0, 0);
                 p2.setDeltaMovement(0, 0, 0);
                 p1.hurtMarked = true;
@@ -356,7 +340,9 @@ public class DuelManager {
                 duel.getBossBar().setProgress((float)remaining / duel.getSettings().getDurationSeconds());
             }
 
-            enforceArenaBounds(duel, p1, p2);
+            if (duel.isMatchmaking()) {
+                enforceArenaBounds(duel, p1, p2);
+            }
             updateSupportPoints(duel, p1);
             updateSupportPoints(duel, p2);
         }
@@ -387,6 +373,8 @@ public class DuelManager {
 
         activeDuels.remove(duel.getPlayer1());
         activeDuels.remove(duel.getPlayer2());
+        lastBoundsTeleport.remove(duel.getPlayer1());
+        lastBoundsTeleport.remove(duel.getPlayer2());
         
         ActivityManager.setPlayerFree(duel.getPlayer1());
         ActivityManager.setPlayerFree(duel.getPlayer2());
@@ -446,14 +434,12 @@ public class DuelManager {
     
     private static void restorePlayer(ServerPlayer player, ActiveDuel duel) {
         if (player == null) return;
-        
-        GameType prevGm = player.getUUID().equals(duel.getPlayer1()) ? duel.getPlayer1PrevGameMode() : duel.getPlayer2PrevGameMode();
-        player.setGameMode(prevGm);
-        gameModeBackups.remove(player.getUUID());
+
         PlayerBackup backup = duelBackups.remove(player.getUUID());
         if (backup != null) {
+            player.setGameMode(backup.getGameMode());
             ServerLevel level = player.server.getLevel(backup.getDimension());
-            if (level != null) {
+            if (duel.isMatchmaking() && level != null) {
                 player.teleportTo(level, backup.getPosition().x, backup.getPosition().y, backup.getPosition().z, player.getYRot(), player.getXRot());
             }
         }
@@ -481,7 +467,8 @@ public class DuelManager {
 
         float startHp = player.getUUID().equals(duel.getPlayer1()) ? duel.getPlayer1StartHp() : duel.getPlayer2StartHp();
         float maxHp = player.getMaxHealth();
-        
+
+        // Keep post-duel health from dropping below a floor, but do not heal above half-max.
         float halfMax = maxHp * 0.5f;
         float finalTarget = Math.min(startHp, halfMax);
         
@@ -535,6 +522,29 @@ public class DuelManager {
 
     private static UUID getOpponentUUID(ActiveDuel duel, UUID playerUUID) {
         return duel.getPlayer1().equals(playerUUID) ? duel.getPlayer2() : duel.getPlayer1();
+    }
+
+    private static void maybeEnforceCountdownFreeze(ActiveDuel duel, ServerPlayer player) {
+        Vec3 frozenPos = duel.getFreezePosition(player.getUUID());
+        if (frozenPos == null) {
+            frozenPos = player.position();
+            duel.setFreezePosition(player.getUUID(), frozenPos);
+            return;
+        }
+        if (player.position().distanceToSqr(frozenPos) > COUNTDOWN_FREEZE_THRESHOLD_SQR) {
+            player.teleportTo(frozenPos.x, frozenPos.y, frozenPos.z);
+        }
+    }
+
+    private static String buildTeamBaseName(Scoreboard scoreboard) {
+        for (int i = 0; i < 8; i++) {
+            String id = UUID.randomUUID().toString().replace("-", "");
+            String teamBase = DUEL_TEAM_PREFIX + id.substring(0, 4);
+            if (scoreboard.getPlayerTeam(teamBase + "_1") == null && scoreboard.getPlayerTeam(teamBase + "_2") == null) {
+                return teamBase;
+            }
+        }
+        throw new IllegalStateException("Failed to allocate a unique duel team name.");
     }
 
     private static void enforceArenaBounds(ActiveDuel duel, ServerPlayer p1, ServerPlayer p2) {

@@ -3,7 +3,6 @@ package net.ledok.duels_ld.manager;
 import net.minecraft.server.level.ServerBossEvent;
 import net.minecraft.world.BossEvent;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.level.GameType;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.UUID;
@@ -21,17 +20,16 @@ public class ActiveDuel {
     
     private float player1StartHp;
     private float player2StartHp;
-    
-    private GameType player1PrevGameMode;
-    private GameType player2PrevGameMode;
 
     private final Map<UUID, MatchPoints> points = new ConcurrentHashMap<>();
     private final Map<UUID, Float> lastHealth = new ConcurrentHashMap<>();
     private final Map<UUID, net.minecraft.world.phys.Vec3> spawnPositions = new ConcurrentHashMap<>();
+    private final Map<UUID, net.minecraft.world.phys.Vec3> freezePositions = new ConcurrentHashMap<>();
     private String arenaName;
     private boolean matchmaking;
+    private volatile EndRequest pendingEndRequest;
 
-    public ActiveDuel(UUID player1, UUID player2, DuelSettings settings, String teamName, float p1Hp, float p2Hp, GameType p1Gm, GameType p2Gm) {
+    public ActiveDuel(UUID player1, UUID player2, DuelSettings settings, String teamName, float p1Hp, float p2Hp) {
         this.player1 = player1;
         this.player2 = player2;
         this.settings = settings;
@@ -39,8 +37,6 @@ public class ActiveDuel {
         this.isCountdown = true;
         this.player1StartHp = p1Hp;
         this.player2StartHp = p2Hp;
-        this.player1PrevGameMode = p1Gm;
-        this.player2PrevGameMode = p2Gm;
 
         points.put(player1, new MatchPoints());
         points.put(player2, new MatchPoints());
@@ -117,14 +113,6 @@ public class ActiveDuel {
     public float getPlayer2StartHp() {
         return player2StartHp;
     }
-    
-    public GameType getPlayer1PrevGameMode() {
-        return player1PrevGameMode;
-    }
-    
-    public GameType getPlayer2PrevGameMode() {
-        return player2PrevGameMode;
-    }
 
     public String getArenaName() {
         return arenaName;
@@ -150,6 +138,24 @@ public class ActiveDuel {
         return spawnPositions.get(player);
     }
 
+    public void setFreezePosition(UUID player, net.minecraft.world.phys.Vec3 pos) {
+        freezePositions.put(player, pos);
+    }
+
+    public net.minecraft.world.phys.Vec3 getFreezePosition(UUID player) {
+        return freezePositions.get(player);
+    }
+
+    public void markForEnd(boolean draw, UUID winnerUUID) {
+        pendingEndRequest = new EndRequest(draw, winnerUUID);
+    }
+
+    public EndRequest consumePendingEndRequest() {
+        EndRequest request = pendingEndRequest;
+        pendingEndRequest = null;
+        return request;
+    }
+
     public MatchPoints getPoints(UUID player) {
         return points.computeIfAbsent(player, k -> new MatchPoints());
     }
@@ -164,5 +170,23 @@ public class ActiveDuel {
 
     public void setLastHealth(UUID player, float health) {
         lastHealth.put(player, health);
+    }
+
+    public static final class EndRequest {
+        private final boolean draw;
+        private final UUID winnerUUID;
+
+        public EndRequest(boolean draw, UUID winnerUUID) {
+            this.draw = draw;
+            this.winnerUUID = winnerUUID;
+        }
+
+        public boolean isDraw() {
+            return draw;
+        }
+
+        public UUID getWinnerUUID() {
+            return winnerUUID;
+        }
     }
 }

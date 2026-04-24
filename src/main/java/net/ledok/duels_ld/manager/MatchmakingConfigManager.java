@@ -69,8 +69,8 @@ public class MatchmakingConfigManager {
     }
 
     public static class MatchmakingConfig {
-        public MatchSettings oneVOne = new MatchSettings(300, 0);
-        public MatchSettings twoVTwo = new MatchSettings(300, 0);
+        public MatchSettings oneVOne = new MatchSettings(DuelSettings.DEFAULT_DURATION_SECONDS, 0);
+        public MatchSettings twoVTwo = new MatchSettings(DuelSettings.DEFAULT_DURATION_SECONDS, 0);
         public PointWeights weights = new PointWeights(1.0, 1.0, 1.0, 5.0);
         public EloSettings elo = new EloSettings(32, 1000);
         public int mmrRangeStart = 100;
