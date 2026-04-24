@@ -10,6 +10,7 @@ import net.ledok.duels_ld.network.OpenLobbyScreenPayload;
 import net.ledok.duels_ld.network.QueueStatePayload;
 import net.ledok.duels_ld.network.SyncMatchmakingSettingsPayload;
 import net.ledok.duels_ld.network.SyncEloPayload;
+import net.ledok.duels_ld.network.SyncPartyPayload;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.glfw.GLFW;
@@ -47,10 +48,16 @@ public class DuelsLdModClient implements ClientModInitializer {
 
         ClientPlayNetworking.registerGlobalReceiver(SyncEloPayload.TYPE, (payload, context) -> {
             context.client().execute(() -> {
+                MatchmakingScreen.applyElo(payload.elo1v1(), payload.elo2v2());
                 if (context.client().screen instanceof MatchmakingScreen screen) {
-                    screen.setElo(payload.elo1v1(), payload.elo2v2());
+                    // screen will pick up static values on next tick
                 }
             });
+        });
+
+        ClientPlayNetworking.registerGlobalReceiver(SyncPartyPayload.TYPE, (payload, context) -> {
+            context.client().execute(() ->
+                MatchmakingScreen.applyPartyState(payload.members(), payload.incomingInviteFrom()));
         });
 
         ClientPlayNetworking.registerGlobalReceiver(QueueStatePayload.TYPE, (payload, context) -> {

@@ -43,7 +43,7 @@ public class MatchmakingManager {
             context.server().execute(() -> joinQueue(context.player(), payload.mode()));
         });
         ServerPlayNetworking.registerGlobalReceiver(LeaveQueuePayload.TYPE, (payload, context) -> {
-            context.server().execute(() -> leaveAllQueues(context.player()));
+            context.server().execute(() -> leaveQueue(context.player(), payload.mode()));
         });
         ServerPlayNetworking.registerGlobalReceiver(OpenLobbyRequestPayload.TYPE, (payload, context) -> {
             context.server().execute(() -> handleOpenLobbyRequest(context.player()));
@@ -129,6 +129,25 @@ public class MatchmakingManager {
         boolean partyRemoved = removePartyFromQueue(player.getUUID());
         if (removed || pendingRemoved || partyRemoved) {
             player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.left_queue"));
+            sendQueueState(player);
+        } else {
+            player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.not_in_queue"));
+        }
+    }
+
+    public static void leaveQueue(ServerPlayer player, int mode) {
+        boolean removed = false;
+        UUID playerId = player.getUUID();
+        if (mode == LeaveQueuePayload.MODE_1V1) {
+            removed = removeEntry(queue1v1, playerId) | removeFromPendingList(pending1v1, playerId);
+        } else if (mode == LeaveQueuePayload.MODE_2V2) {
+            removed = removeEntry(queue2v2, playerId) | removePartyFromQueue(playerId) | removeFromPendingList(pending2v2, playerId);
+        } else {
+            leaveAllQueues(player);
+            return;
+        }
+        if (removed) {
+            player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.left_selected_queue"));
             sendQueueState(player);
         } else {
             player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.not_in_queue"));

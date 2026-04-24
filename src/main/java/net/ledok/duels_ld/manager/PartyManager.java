@@ -6,11 +6,15 @@ import net.ledok.duels_ld.network.PartyAcceptPayload;
 import net.ledok.duels_ld.network.PartyInvitePayload;
 import net.ledok.duels_ld.network.RequestEloPayload;
 import net.ledok.duels_ld.network.SyncEloPayload;
+import net.ledok.duels_ld.network.SyncPartyPayload;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.network.chat.Component;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -21,6 +25,10 @@ public class PartyManager {
     private static final Map<UUID, Set<UUID>> pendingInvites = new HashMap<>(); // target -> leaders
 
     public static void init() {
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            sendPartyState(handler.getPlayer());
+        });
+
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             UUID playerId = handler.getPlayer().getUUID();
             leaveParty(playerId, server);
@@ -51,6 +59,7 @@ public class PartyManager {
         parties.put(leader.getUUID(), party);
         memberToLeader.put(leader.getUUID(), leader.getUUID());
         leader.sendSystemMessage(Component.translatable("duels_ld.party.created"));
+        sendPartyState(leader);
         return true;
     }
 
@@ -86,6 +95,8 @@ public class PartyManager {
         pendingInvites.computeIfAbsent(target.getUUID(), k -> new HashSet<>()).add(leader.getUUID());
         leader.sendSystemMessage(Component.translatable("duels_ld.party.invite_sent", target.getName().getString()));
         target.sendSystemMessage(Component.translatable("duels_ld.party.invite_received", leader.getName().getString(), leader.getName().getString()));
+        sendPartyState(leader);
+        sendPartyState(target);
         return true;
     }
 
@@ -93,17 +104,23 @@ public class PartyManager {
         Set<UUID> invites = pendingInvites.get(target.getUUID());
         if (invites == null || !invites.contains(leader.getUUID())) {
             target.sendSystemMessage(Component.translatable("duels_ld.party.no_invite_from"));
+            sendPartyState(target);
             return false;
         }
         Party party = getPartyByLeader(leader.getUUID());
         if (party == null) {
             target.sendSystemMessage(Component.translatable("duels_ld.party.no_longer_exists"));
             invites.remove(leader.getUUID());
+            cleanupInviteSet(target.getUUID());
+            sendPartyState(target);
             return false;
         }
         if (party.members.size() >= 2) {
             target.sendSystemMessage(Component.translatable("duels_ld.party.full"));
             invites.remove(leader.getUUID());
+            cleanupInviteSet(target.getUUID());
+            sendPartyState(target);
+            sendPartyState(leader);
             return false;
         }
         if (memberToLeader.containsKey(target.getUUID())) {
@@ -112,6 +129,8 @@ public class PartyManager {
             if (targetParty != null && targetParty.members.size() > 1) {
                 target.sendSystemMessage(Component.translatable("duels_ld.party.already_in_party"));
                 invites.remove(leader.getUUID());
+                cleanupInviteSet(target.getUUID());
+                sendPartyState(target);
                 return false;
             }
             if (targetParty != null && targetLeaderId.equals(target.getUUID())) {
@@ -121,8 +140,12 @@ public class PartyManager {
         party.members.add(target.getUUID());
         memberToLeader.put(target.getUUID(), leader.getUUID());
         invites.remove(leader.getUUID());
+        cleanupInviteSet(target.getUUID());
         target.sendSystemMessage(Component.translatable("duels_ld.party.joined", leader.getName().getString()));
         leader.sendSystemMessage(Component.translatable("duels_ld.party.member_joined", target.getName().getString()));
+        syncPartyForLeader(target.server, leader.getUUID());
+        sendPartyState(target);
+        syncInviteesForLeader(target.server, leader.getUUID());
         return true;
     }
 
@@ -149,10 +172,12 @@ public class PartyManager {
         ServerPlayer leader = server.getPlayerList().getPlayer(leaderId);
         if (leader != null) {
             leader.sendSystemMessage(Component.translatable("duels_ld.party.member_left"));
+            sendPartyState(leader);
         }
         ServerPlayer leaver = server.getPlayerList().getPlayer(playerId);
         if (leaver != null) {
             leaver.sendSystemMessage(Component.translatable("duels_ld.party.left"));
+            sendPartyState(leaver);
         }
     }
 
@@ -161,15 +186,38 @@ public class PartyManager {
     }
 
     private static void disbandParty(UUID leaderId, net.minecraft.server.MinecraftServer server) {
+        Set<UUID> membersSnapshot = new HashSet<>();
+        Party existing = parties.get(leaderId);
+        if (existing != null) {
+            membersSnapshot.addAll(existing.members);
+        }
+        List<UUID> inviteTargets = getInviteTargetsForLeader(leaderId);
         Party party = parties.remove(leaderId);
         if (party == null) {
             return;
         }
+        removeOutgoingInvites(leaderId);
         for (UUID member : party.members) {
             memberToLeader.remove(member);
             ServerPlayer player = server.getPlayerList().getPlayer(member);
             if (player != null) {
                 player.sendSystemMessage(Component.translatable("duels_ld.party.disbanded"));
+                sendPartyState(player);
+            }
+        }
+        for (UUID memberId : membersSnapshot) {
+            if (memberId.equals(leaderId)) {
+                continue;
+            }
+            ServerPlayer member = server.getPlayerList().getPlayer(memberId);
+            if (member != null) {
+                sendPartyState(member);
+            }
+        }
+        for (UUID inviteTarget : inviteTargets) {
+            ServerPlayer target = server.getPlayerList().getPlayer(inviteTarget);
+            if (target != null) {
+                sendPartyState(target);
             }
         }
     }
@@ -227,16 +275,132 @@ public class PartyManager {
         Set<UUID> invites = pendingInvites.get(target.getUUID());
         if (invites == null || invites.isEmpty()) {
             target.sendSystemMessage(Component.translatable("duels_ld.party.no_pending_invites"));
+            sendPartyState(target);
             return;
         }
         UUID leaderId = invites.iterator().next();
         ServerPlayer leader = target.server.getPlayerList().getPlayer(leaderId);
         if (leader == null) {
             invites.remove(leaderId);
+            cleanupInviteSet(target.getUUID());
             target.sendSystemMessage(Component.translatable("duels_ld.party.not_available"));
+            sendPartyState(target);
             return;
         }
         acceptInvite(target, leader);
+    }
+
+    private static void sendPartyState(ServerPlayer player) {
+        if (player == null) {
+            return;
+        }
+        ServerPlayNetworking.send(player, buildPartyPayload(player));
+    }
+
+    private static SyncPartyPayload buildPartyPayload(ServerPlayer player) {
+        UUID playerId = player.getUUID();
+        UUID leaderId = memberToLeader.get(playerId);
+        List<SyncPartyPayload.Member> members = new ArrayList<>();
+        if (leaderId != null) {
+            Party party = parties.get(leaderId);
+            if (party != null) {
+                for (UUID memberId : party.members) {
+                    String name = resolveName(player.server, memberId);
+                    members.add(new SyncPartyPayload.Member(
+                        name,
+                        memberId.equals(playerId),
+                        memberId.equals(leaderId),
+                        false
+                    ));
+                }
+                if (leaderId.equals(playerId)) {
+                    for (UUID inviteTargetId : getInviteTargetsForLeader(leaderId)) {
+                        members.add(new SyncPartyPayload.Member(
+                            resolveName(player.server, inviteTargetId),
+                            false,
+                            false,
+                            true
+                        ));
+                    }
+                }
+            }
+        }
+        String incomingInviteFrom = resolveIncomingInviteFrom(player.server, playerId);
+        return new SyncPartyPayload(members, incomingInviteFrom);
+    }
+
+    private static String resolveIncomingInviteFrom(MinecraftServer server, UUID playerId) {
+        Set<UUID> invites = pendingInvites.get(playerId);
+        if (invites == null || invites.isEmpty()) {
+            return null;
+        }
+        UUID leaderId = invites.iterator().next();
+        return resolveName(server, leaderId);
+    }
+
+    private static List<UUID> getInviteTargetsForLeader(UUID leaderId) {
+        List<UUID> targets = new ArrayList<>();
+        for (Map.Entry<UUID, Set<UUID>> entry : pendingInvites.entrySet()) {
+            if (entry.getValue().contains(leaderId)) {
+                targets.add(entry.getKey());
+            }
+        }
+        return targets;
+    }
+
+    private static void syncPartyForLeader(MinecraftServer server, UUID leaderId) {
+        Party party = parties.get(leaderId);
+        if (party == null) {
+            return;
+        }
+        for (UUID memberId : party.members) {
+            ServerPlayer member = server.getPlayerList().getPlayer(memberId);
+            if (member != null) {
+                sendPartyState(member);
+            }
+        }
+    }
+
+    private static void syncInviteesForLeader(MinecraftServer server, UUID leaderId) {
+        for (UUID inviteTarget : getInviteTargetsForLeader(leaderId)) {
+            ServerPlayer target = server.getPlayerList().getPlayer(inviteTarget);
+            if (target != null) {
+                sendPartyState(target);
+            }
+        }
+    }
+
+    private static void cleanupInviteSet(UUID targetId) {
+        Set<UUID> invites = pendingInvites.get(targetId);
+        if (invites != null && invites.isEmpty()) {
+            pendingInvites.remove(targetId);
+        }
+    }
+
+    private static void removeOutgoingInvites(UUID leaderId) {
+        for (Map.Entry<UUID, Set<UUID>> entry : pendingInvites.entrySet()) {
+            entry.getValue().remove(leaderId);
+        }
+        List<UUID> emptyTargets = new ArrayList<>();
+        for (Map.Entry<UUID, Set<UUID>> entry : pendingInvites.entrySet()) {
+            if (entry.getValue().isEmpty()) {
+                emptyTargets.add(entry.getKey());
+            }
+        }
+        for (UUID targetId : emptyTargets) {
+            pendingInvites.remove(targetId);
+        }
+    }
+
+    private static String resolveName(MinecraftServer server, UUID playerId) {
+        ServerPlayer online = server.getPlayerList().getPlayer(playerId);
+        if (online != null) {
+            return online.getGameProfile().getName();
+        }
+        return server.getProfileCache()
+            .get(playerId)
+            .map(profile -> profile.getName())
+            .orElse(playerId.toString().substring(0, 8));
     }
 
 }
