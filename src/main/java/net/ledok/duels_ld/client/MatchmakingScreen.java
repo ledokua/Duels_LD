@@ -7,6 +7,7 @@ import net.ledok.duels_ld.network.PartyAcceptPayload;
 import net.ledok.duels_ld.network.PartyInvitePayload;
 import net.ledok.duels_ld.network.RequestEloPayload;
 import net.ledok.duels_ld.network.SyncPartyPayload;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -461,6 +462,10 @@ public class MatchmakingScreen extends Screen {
     public static void applyPartyState(List<SyncPartyPayload.Member> members, String incomingFrom) {
         partyMembers = new ArrayList<>(members);
         incomingInvite = incomingFrom;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen instanceof MatchmakingScreen s) {
+            mc.execute(s::rebuildWidgets);
+        }
     }
 
     // ── Layout helpers ────────────────────────────────────────────────────

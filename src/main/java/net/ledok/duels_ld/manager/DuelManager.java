@@ -477,6 +477,15 @@ public class DuelManager {
             duel.setSpawnPosition(p4.getUUID(), t2b);
             duel.setMatchmaking(true);
         }
+
+        Set<UUID> processedPartyLeaders = new HashSet<>();
+        for (ServerPlayer player : List.of(p1, p2, p3, p4)) {
+            UUID leaderId = PartyManager.getLeader(player.getUUID());
+            if (leaderId == null || !processedPartyLeaders.add(leaderId)) {
+                continue;
+            }
+            PartyManager.disbandParty(leaderId, server);
+        }
     }
     
     private static void onServerTick(MinecraftServer server) {

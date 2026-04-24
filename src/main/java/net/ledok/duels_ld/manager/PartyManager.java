@@ -12,8 +12,11 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -22,7 +25,7 @@ import java.util.UUID;
 public class PartyManager {
     private static final Map<UUID, Party> parties = new HashMap<>();
     private static final Map<UUID, UUID> memberToLeader = new HashMap<>();
-    private static final Map<UUID, Set<UUID>> pendingInvites = new HashMap<>(); // target -> leaders
+    private static final Map<UUID, Deque<UUID>> pendingInvites = new HashMap<>(); // target -> leaders
 
     public static void init() {
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
@@ -92,7 +95,9 @@ public class PartyManager {
                 return false;
             }
         }
-        pendingInvites.computeIfAbsent(target.getUUID(), k -> new HashSet<>()).add(leader.getUUID());
+        Deque<UUID> invites = pendingInvites.computeIfAbsent(target.getUUID(), k -> new ArrayDeque<>());
+        invites.remove(leader.getUUID());
+        invites.addLast(leader.getUUID());
         leader.sendSystemMessage(Component.translatable("duels_ld.party.invite_sent", target.getName().getString()));
         target.sendSystemMessage(Component.translatable("duels_ld.party.invite_received", leader.getName().getString(), leader.getName().getString()));
         sendPartyState(leader);
@@ -101,7 +106,7 @@ public class PartyManager {
     }
 
     public static boolean acceptInvite(ServerPlayer target, ServerPlayer leader) {
-        Set<UUID> invites = pendingInvites.get(target.getUUID());
+        Deque<UUID> invites = pendingInvites.get(target.getUUID());
         if (invites == null || !invites.contains(leader.getUUID())) {
             target.sendSystemMessage(Component.translatable("duels_ld.party.no_invite_from"));
             sendPartyState(target);
@@ -185,7 +190,7 @@ public class PartyManager {
         disbandParty(leader.getUUID(), leader.server);
     }
 
-    private static void disbandParty(UUID leaderId, net.minecraft.server.MinecraftServer server) {
+    public static void disbandParty(UUID leaderId, net.minecraft.server.MinecraftServer server) {
         Set<UUID> membersSnapshot = new HashSet<>();
         Party existing = parties.get(leaderId);
         if (existing != null) {
@@ -241,7 +246,7 @@ public class PartyManager {
 
     public static class Party {
         public final UUID leader;
-        public final Set<UUID> members = new HashSet<>();
+        public final Set<UUID> members = new LinkedHashSet<>();
 
         public Party(UUID leader) {
             this.leader = leader;
@@ -272,13 +277,13 @@ public class PartyManager {
     }
 
     private static void acceptFirstInvite(ServerPlayer target) {
-        Set<UUID> invites = pendingInvites.get(target.getUUID());
+        Deque<UUID> invites = pendingInvites.get(target.getUUID());
         if (invites == null || invites.isEmpty()) {
             target.sendSystemMessage(Component.translatable("duels_ld.party.no_pending_invites"));
             sendPartyState(target);
             return;
         }
-        UUID leaderId = invites.iterator().next();
+        UUID leaderId = invites.peekLast();
         ServerPlayer leader = target.server.getPlayerList().getPlayer(leaderId);
         if (leader == null) {
             invites.remove(leaderId);
@@ -330,17 +335,17 @@ public class PartyManager {
     }
 
     private static String resolveIncomingInviteFrom(MinecraftServer server, UUID playerId) {
-        Set<UUID> invites = pendingInvites.get(playerId);
+        Deque<UUID> invites = pendingInvites.get(playerId);
         if (invites == null || invites.isEmpty()) {
             return null;
         }
-        UUID leaderId = invites.iterator().next();
+        UUID leaderId = invites.peekLast();
         return resolveName(server, leaderId);
     }
 
     private static List<UUID> getInviteTargetsForLeader(UUID leaderId) {
         List<UUID> targets = new ArrayList<>();
-        for (Map.Entry<UUID, Set<UUID>> entry : pendingInvites.entrySet()) {
+        for (Map.Entry<UUID, Deque<UUID>> entry : pendingInvites.entrySet()) {
             if (entry.getValue().contains(leaderId)) {
                 targets.add(entry.getKey());
             }
@@ -371,18 +376,18 @@ public class PartyManager {
     }
 
     private static void cleanupInviteSet(UUID targetId) {
-        Set<UUID> invites = pendingInvites.get(targetId);
+        Deque<UUID> invites = pendingInvites.get(targetId);
         if (invites != null && invites.isEmpty()) {
             pendingInvites.remove(targetId);
         }
     }
 
     private static void removeOutgoingInvites(UUID leaderId) {
-        for (Map.Entry<UUID, Set<UUID>> entry : pendingInvites.entrySet()) {
+        for (Map.Entry<UUID, Deque<UUID>> entry : pendingInvites.entrySet()) {
             entry.getValue().remove(leaderId);
         }
         List<UUID> emptyTargets = new ArrayList<>();
-        for (Map.Entry<UUID, Set<UUID>> entry : pendingInvites.entrySet()) {
+        for (Map.Entry<UUID, Deque<UUID>> entry : pendingInvites.entrySet()) {
             if (entry.getValue().isEmpty()) {
                 emptyTargets.add(entry.getKey());
             }
