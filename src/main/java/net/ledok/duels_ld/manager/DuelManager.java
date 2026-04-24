@@ -43,7 +43,18 @@ public class DuelManager {
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             ServerPlayer player = handler.getPlayer();
-            if (duelBackups.containsKey(player.getUUID()) && !isInDuel(player)) {
+            UUID playerId = player.getUUID();
+            if (!duelBackups.containsKey(playerId)) {
+                return;
+            }
+            ActiveTeamDuel teamDuel = activeTeamDuels.get(playerId);
+            if (teamDuel != null) {
+                if (teamDuel.isEliminated(playerId)) {
+                    player.setGameMode(GameType.SPECTATOR);
+                }
+                return;
+            }
+            if (!activeDuels.containsKey(playerId)) {
                 restorePlayerFromBackup(player);
                 player.sendSystemMessage(Component.translatable("duels_ld.duel.restore_gamemode").withStyle(ChatFormatting.YELLOW));
             }
@@ -85,6 +96,10 @@ public class DuelManager {
 
         UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
             if (player instanceof ServerPlayer serverPlayer && isInDuel(serverPlayer)) {
+                ActiveTeamDuel teamDuel = getTeamDuel(serverPlayer);
+                if (teamDuel != null && teamDuel.isCountdown()) {
+                    return InteractionResult.FAIL;
+                }
                 ActiveDuel duel = getDuel(serverPlayer);
                 if (duel != null && duel.isCountdown()) {
                     return InteractionResult.FAIL;
@@ -95,6 +110,10 @@ public class DuelManager {
 
         UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
             if (player instanceof ServerPlayer serverPlayer && isInDuel(serverPlayer)) {
+                ActiveTeamDuel teamDuel = getTeamDuel(serverPlayer);
+                if (teamDuel != null && teamDuel.isCountdown()) {
+                    return InteractionResult.FAIL;
+                }
                 ActiveDuel duel = getDuel(serverPlayer);
                 if (duel != null && duel.isCountdown()) {
                     return InteractionResult.FAIL;
@@ -105,6 +124,10 @@ public class DuelManager {
 
         UseItemCallback.EVENT.register((player, world, hand) -> {
             if (player instanceof ServerPlayer serverPlayer && isInDuel(serverPlayer)) {
+                ActiveTeamDuel teamDuel = getTeamDuel(serverPlayer);
+                if (teamDuel != null && teamDuel.isCountdown()) {
+                    return InteractionResultHolder.fail(player.getItemInHand(hand));
+                }
                 ActiveDuel duel = getDuel(serverPlayer);
                 if (duel != null && duel.isCountdown()) {
                     return InteractionResultHolder.fail(player.getItemInHand(hand));
@@ -200,6 +223,30 @@ public class DuelManager {
             if (!isInDuel(player)) {
                 return;
             }
+            ActiveTeamDuel teamDuel = getTeamDuel(player);
+            if (teamDuel != null) {
+                if (teamDuel.isCountdown()) {
+                    return;
+                }
+                int winHp = teamDuel.getSettings().getWinHpPercentage();
+                if (winHp <= 0) {
+                    return;
+                }
+                float healthPct = (player.getHealth() / player.getMaxHealth()) * 100.0f;
+                if (healthPct <= winHp && player.getHealth() > 0.0f) {
+                    int loserTeam = teamDuel.getTeam(player.getUUID());
+                    int winningTeam = otherTeam(loserTeam);
+                    Entity attacker = source.getEntity();
+                    if (attacker instanceof ServerPlayer attackerPlayer && getTeamDuel(attackerPlayer) == teamDuel) {
+                        int attackerTeam = teamDuel.getTeam(attackerPlayer.getUUID());
+                        if (attackerTeam != 0) {
+                            winningTeam = attackerTeam;
+                        }
+                    }
+                    teamDuel.markForEnd(false, winningTeam);
+                }
+                return;
+            }
             ActiveDuel duel = getDuel(player);
             if (duel == null || duel.isCountdown()) {
                 return;
@@ -217,7 +264,7 @@ public class DuelManager {
                 } else {
                     winnerUUID = getOpponentUUID(duel, player.getUUID());
                 }
-                endDuel(player.server, duel, false, winnerUUID);
+                duel.markForEnd(false, winnerUUID);
             }
         });
 
@@ -774,6 +821,10 @@ public class DuelManager {
 
     private static UUID getOpponentUUID(ActiveDuel duel, UUID playerUUID) {
         return duel.getPlayer1().equals(playerUUID) ? duel.getPlayer2() : duel.getPlayer1();
+    }
+
+    private static int otherTeam(int team) {
+        return team == 1 ? 2 : 1;
     }
 
     private static void processActiveTeamDuels(MinecraftServer server, long currentTime) {
