@@ -989,6 +989,9 @@ public class DuelManager {
             if (nearestAliveTeammate == null || nearestDistanceSqr <= leashDistanceSqr) {
                 continue;
             }
+            if (!spectator.level().dimension().equals(nearestAliveTeammate.level().dimension())) {
+                continue;
+            }
             spectator.teleportTo(
                 nearestAliveTeammate.getX() + 0.6,
                 nearestAliveTeammate.getY() + 0.1,
