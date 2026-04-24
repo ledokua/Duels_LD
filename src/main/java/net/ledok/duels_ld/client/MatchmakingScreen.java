@@ -14,6 +14,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 public class MatchmakingScreen extends Screen {
@@ -90,6 +91,10 @@ public class MatchmakingScreen extends Screen {
     private Button btnSendInvite;
     private Button btnAcceptInvite;
     private Button btnDeclineInvite;
+    private List<String> inviteSuggestions = List.of();
+
+    private static final int DROPDOWN_MAX_ROWS = 6;
+    private static final int DROPDOWN_ROW_HEIGHT = 12;
 
     public MatchmakingScreen() {
         super(Component.translatable("duels_ld.screen.matchmaking.title"));
@@ -156,12 +161,12 @@ public class MatchmakingScreen extends Screen {
                     ClientPlayNetworking.send(new PartyAcceptPayload(incomingInvite));
                 }
             }
-        ).bounds(x + P + IW - 88, incY, 40, 12).build());
+        ).bounds(x + P + IW - 88, incY, 38, 12).build());
 
         btnDeclineInvite = addRenderableWidget(Button.builder(
             Component.translatable("duels_ld.screen.matchmaking.decline"),
             b -> incomingInvite = null // decline = just ignore — no dedicated payload currently
-        ).bounds(x + P + IW - 44, incY, 44, 12).build());
+        ).bounds(x + P + IW - 46, incY, 42, 12).build());
 
         updateButtons();
     }
@@ -241,7 +246,7 @@ public class MatchmakingScreen extends Screen {
     }
 
     private void renderRatingZone(GuiGraphics g, int x, int y, long now) {
-        smallLabel(g, "My Rating", x + P, y + Y_RATING);
+        smallLabel(g, Component.translatable("duels_ld.screen.matchmaking.my_rating").getString(), x + P, y + Y_RATING);
 
         boolean q1 = queue1v1Start >= 0;
         boolean q2 = queue2v2Start >= 0;
@@ -251,14 +256,14 @@ public class MatchmakingScreen extends Screen {
         int c1x = x + P;
         renderEloCard(g, c1x, cardY, CARD_W, CARD_H,
             q1, C_BLUE, C_BLUE_BG, C_BLUE_BDR,
-            "1V1", elo1v1,
+            Component.translatable("duels_ld.screen.matchmaking.mode_1v1").getString(), elo1v1,
             q1 ? elapsedSecs(queue1v1Start, now) : 0);
 
         // 2v2 card
         int c2x = x + P + CARD_W + 6;
         renderEloCard(g, c2x, cardY, CARD_W, CARD_H,
             q2, C_TEAL, C_TEAL_BG, C_TEAL_BDR,
-            "2V2", elo2v2,
+            Component.translatable("duels_ld.screen.matchmaking.mode_2v2").getString(), elo2v2,
             q2 ? elapsedSecs(queue2v2Start, now) : 0);
     }
 
@@ -296,7 +301,7 @@ public class MatchmakingScreen extends Screen {
             g.drawString(font, timer, 0, 0, accent, false);
             g.pose().popPose();
             // "searching..." sub-label
-            small(g, "searching...", x + 4, y + 36, accent & 0xAAFFFFFF);
+            small(g, Component.translatable("duels_ld.screen.matchmaking.searching").getString(), x + 4, y + 36, accent & 0xAAFFFFFF);
         } else {
             // ELO number — large
             String eloStr = String.valueOf(elo);
@@ -309,7 +314,7 @@ public class MatchmakingScreen extends Screen {
     }
 
     private void renderQueueZone(GuiGraphics g, int x, int y) {
-        smallLabel(g, "Queue", x + P, y + Y_QUEUE);
+        smallLabel(g, Component.translatable("duels_ld.screen.matchmaking.queue_label").getString(), x + P, y + Y_QUEUE);
 
         boolean q1 = queue1v1Start >= 0;
         boolean q2 = queue2v2Start >= 0;
@@ -341,13 +346,13 @@ public class MatchmakingScreen extends Screen {
         drawBorder(g, x + P, py, IW, panelH, C_BORDER);
 
         // "2v2 Party" label
-        smallLabel(g, "2v2 Party", x + P + 4, py + 5);
+        smallLabel(g, Component.translatable("duels_ld.screen.matchmaking.party_title").getString(), x + P + 4, py + 5);
 
         int cy = py + 16;
 
         // Member list
         if (partyMembers.isEmpty()) {
-            small(g, "No party - invite someone to create one", x + P + 4, cy, C_DIM);
+            small(g, Component.translatable("duels_ld.screen.matchmaking.no_party_hint").getString(), x + P + 4, cy, C_DIM);
             cy += 10;
         } else {
             for (SyncPartyPayload.Member m : partyMembers) {
@@ -360,11 +365,12 @@ public class MatchmakingScreen extends Screen {
                 g.drawString(font, m.name(), x + P + 14, cy, nameColor, false);
                 // Pending badge
                 if (m.pending()) {
-                    int bw = font.width("pending") + 6;
+                    String pendingLabel = Component.translatable("duels_ld.screen.matchmaking.pending").getString();
+                    int bw = font.width(pendingLabel) + 6;
                     int bx = x + P + IW - bw - 4;
                     g.fill(bx, cy - 1, bx + bw, cy + 9, C_AMBER_BG);
                     drawBorder(g, bx, cy - 1, bw, 10, C_AMBER_BDR);
-                    small(g, "pending", bx + 3, cy, C_AMBER);
+                    small(g, pendingLabel, bx + 3, cy, C_AMBER);
                 }
                 cy += 11;
             }
@@ -379,15 +385,17 @@ public class MatchmakingScreen extends Screen {
         if (inviteBox != null) {
             inviteBox.setY(cy);
             if (btnSendInvite != null) btnSendInvite.setY(cy);
+            renderInviteDropdown(g);
         }
 
         // Incoming invite panel
         if (incomingInvite != null) {
             int incY = cy + 14 + 5;
-            g.fill(x + P, incY, x + P + IW, incY + 18, C_GREEN_BG);
-            drawBorder(g, x + P, incY, IW, 18, C_GREEN_BDR);
-            small(g, "Invite from ", x + P + 4, incY + 5, C_MUTED);
-            small(g, incomingInvite, x + P + 4 + font.width("Invite from "), incY + 5, C_TEAL_NAME);
+            g.fill(x + P + 2, incY, x + P + IW - 2, incY + 18, C_GREEN_BG);
+            drawBorder(g, x + P + 2, incY, IW - 4, 18, C_GREEN_BDR);
+            String inviteFromPrefix = Component.translatable("duels_ld.screen.matchmaking.invite_from_prefix").getString();
+            small(g, inviteFromPrefix, x + P + 6, incY + 5, C_MUTED);
+            small(g, incomingInvite, x + P + 6 + font.width(inviteFromPrefix), incY + 5, C_TEAL_NAME);
             // Reposition accept/decline buttons
             if (btnAcceptInvite != null) btnAcceptInvite.setY(incY + 3);
             if (btnDeclineInvite != null) btnDeclineInvite.setY(incY + 3);
@@ -416,6 +424,27 @@ public class MatchmakingScreen extends Screen {
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (button == 0 && inviteBox != null && inviteBox.isFocused() && !inviteSuggestions.isEmpty()) {
+            int x = inviteBox.getX();
+            int y = inviteBox.getY() + inviteBox.getHeight() + 1;
+            int w = inviteBox.getWidth();
+            int rows = Math.min(DROPDOWN_MAX_ROWS, inviteSuggestions.size());
+            int h = rows * DROPDOWN_ROW_HEIGHT;
+            if (mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h) {
+                int index = (int) ((mouseY - y) / DROPDOWN_ROW_HEIGHT);
+                if (index >= 0 && index < rows) {
+                    inviteBox.setValue(inviteSuggestions.get(index));
+                    inviteBox.setFocused(false);
+                    inviteSuggestions = List.of();
+                    return true;
+                }
+            }
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
     }
 
     // ── Static state setters (called from client network handlers) ─────────
@@ -491,5 +520,45 @@ public class MatchmakingScreen extends Screen {
             }
         }
         if (best != null) field.setValue(best);
+    }
+
+    private void renderInviteDropdown(GuiGraphics g) {
+        inviteSuggestions = getInviteSuggestions();
+        if (inviteSuggestions.isEmpty()) {
+            return;
+        }
+        int x = inviteBox.getX();
+        int y = inviteBox.getY() + inviteBox.getHeight() + 1;
+        int w = inviteBox.getWidth();
+        int rows = Math.min(DROPDOWN_MAX_ROWS, inviteSuggestions.size());
+        int h = rows * DROPDOWN_ROW_HEIGHT;
+        g.fill(x, y, x + w, y + h, C_SURFACE);
+        drawBorder(g, x, y, w, h, C_BORDER);
+
+        for (int i = 0; i < rows; i++) {
+            int rowY = y + i * DROPDOWN_ROW_HEIGHT;
+            String name = inviteSuggestions.get(i);
+            g.fill(x + 1, rowY + 1, x + w - 1, rowY + DROPDOWN_ROW_HEIGHT - 1, C_SURFACE_DEEP);
+            g.drawString(font, name, x + 4, rowY + 2, C_TEXT, false);
+        }
+    }
+
+    private List<String> getInviteSuggestions() {
+        if (minecraft == null || minecraft.getConnection() == null || inviteBox == null || !inviteBox.isFocused()) {
+            return List.of();
+        }
+        String prefix = inviteBox.getValue().trim().toLowerCase();
+        List<String> names = new ArrayList<>();
+        for (var info : minecraft.getConnection().getOnlinePlayers()) {
+            String name = info.getProfile().getName();
+            if (minecraft.player != null && name.equalsIgnoreCase(minecraft.player.getGameProfile().getName())) {
+                continue;
+            }
+            if (prefix.isEmpty() || name.toLowerCase().contains(prefix)) {
+                names.add(name);
+            }
+        }
+        names.sort(Comparator.naturalOrder());
+        return names;
     }
 }

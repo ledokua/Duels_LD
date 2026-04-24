@@ -119,6 +119,9 @@ public class MatchmakingManager {
                 if (player != null) {
                     sendQueueState(player);
                 }
+                if (partyRemoved) {
+                    sendQueueStateToPartyMembers(playerId, server);
+                }
             }
         }
     }
@@ -130,6 +133,9 @@ public class MatchmakingManager {
         if (removed || pendingRemoved || partyRemoved) {
             player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.left_queue"));
             sendQueueState(player);
+            if (partyRemoved) {
+                sendQueueStateToPartyMembers(player.getUUID(), player.server);
+            }
         } else {
             player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.not_in_queue"));
         }
@@ -141,7 +147,11 @@ public class MatchmakingManager {
         if (mode == LeaveQueuePayload.MODE_1V1) {
             removed = removeEntry(queue1v1, playerId) | removeFromPendingList(pending1v1, playerId);
         } else if (mode == LeaveQueuePayload.MODE_2V2) {
-            removed = removeEntry(queue2v2, playerId) | removePartyFromQueue(playerId) | removeFromPendingList(pending2v2, playerId);
+            boolean partyRemoved = removePartyFromQueue(playerId);
+            removed = removeEntry(queue2v2, playerId) | partyRemoved | removeFromPendingList(pending2v2, playerId);
+            if (partyRemoved) {
+                sendQueueStateToPartyMembers(playerId, player.server);
+            }
         } else {
             leaveAllQueues(player);
             return;
@@ -458,10 +468,7 @@ public class MatchmakingManager {
             PartyManager.Party party = PartyManager.getPartyByLeader(leader);
             if (party == null || party.members.size() != 2) {
                 iterator.remove();
-                ServerPlayer leaderPlayer = server.getPlayerList().getPlayer(leader);
-                if (leaderPlayer != null) {
-                    sendQueueState(leaderPlayer);
-                }
+                sendQueueStateToPartyMembers(leader, server);
                 continue;
             }
             boolean allOnline = true;
@@ -473,10 +480,7 @@ public class MatchmakingManager {
             }
             if (!allOnline) {
                 iterator.remove();
-                ServerPlayer leaderPlayer = server.getPlayerList().getPlayer(leader);
-                if (leaderPlayer != null) {
-                    sendQueueState(leaderPlayer);
-                }
+                sendQueueStateToPartyMembers(leader, server);
             }
         }
     }
@@ -765,5 +769,26 @@ public class MatchmakingManager {
             }
         }
         return false;
+    }
+
+    private static void sendQueueStateToPartyMembers(UUID playerId, MinecraftServer server) {
+        UUID leader = PartyManager.getLeader(playerId);
+        if (leader == null) {
+            return;
+        }
+        PartyManager.Party party = PartyManager.getPartyByLeader(leader);
+        if (party == null) {
+            ServerPlayer leaderPlayer = server.getPlayerList().getPlayer(leader);
+            if (leaderPlayer != null) {
+                sendQueueState(leaderPlayer);
+            }
+            return;
+        }
+        for (UUID memberId : party.members) {
+            ServerPlayer member = server.getPlayerList().getPlayer(memberId);
+            if (member != null) {
+                sendQueueState(member);
+            }
+        }
     }
 }
