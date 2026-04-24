@@ -20,6 +20,7 @@ import net.ledok.duels_ld.network.OpenLobbyRequestPayload;
 import net.ledok.duels_ld.network.OpenLobbyScreenPayload;
 import net.ledok.duels_ld.network.PartyAcceptPayload;
 import net.ledok.duels_ld.network.PartyInvitePayload;
+import net.ledok.duels_ld.network.QueueStatePayload;
 import net.ledok.duels_ld.network.RequestEloPayload;
 import net.ledok.duels_ld.network.SyncEloPayload;
 import net.ledok.duels_ld.network.SyncMatchmakingSettingsPayload;
@@ -44,6 +45,7 @@ public class DuelsLdMod implements ModInitializer {
         PayloadTypeRegistry.playS2C().register(SyncMatchmakingSettingsPayload.TYPE, SyncMatchmakingSettingsPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(SyncEloPayload.TYPE, SyncEloPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(OpenLobbyScreenPayload.TYPE, OpenLobbyScreenPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(QueueStatePayload.TYPE, QueueStatePayload.CODEC);
 
         StatsManager.init();
         MatchmakingConfigManager.init();

@@ -7,6 +7,7 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.ledok.duels_ld.network.OpenAdminGuiPayload;
 import net.ledok.duels_ld.network.OpenLobbyRequestPayload;
 import net.ledok.duels_ld.network.OpenLobbyScreenPayload;
+import net.ledok.duels_ld.network.QueueStatePayload;
 import net.ledok.duels_ld.network.SyncMatchmakingSettingsPayload;
 import net.ledok.duels_ld.network.SyncEloPayload;
 import net.minecraft.client.KeyMapping;
@@ -50,6 +51,10 @@ public class DuelsLdModClient implements ClientModInitializer {
                     screen.setElo(payload.elo1v1(), payload.elo2v2());
                 }
             });
+        });
+
+        ClientPlayNetworking.registerGlobalReceiver(QueueStatePayload.TYPE, (payload, context) -> {
+            context.client().execute(() -> MatchmakingScreen.applyQueueState(payload.in1v1(), payload.in2v2()));
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {

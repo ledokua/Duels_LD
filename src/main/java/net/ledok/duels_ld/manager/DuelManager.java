@@ -37,6 +37,7 @@ public class DuelManager {
     private static final Map<UUID, Long> lastBoundsTeleport = new ConcurrentHashMap<>();
     private static final long BOUNDS_TELEPORT_COOLDOWN_MS = 2000;
     private static final double COUNTDOWN_FREEZE_THRESHOLD_SQR = 0.25;
+    private static final double SPECTATOR_LEASH_RADIUS = 8.0;
 
     public static void init() {
         ServerTickEvents.END_SERVER_TICK.register(DuelManager::onServerTick);
@@ -901,6 +902,7 @@ public class DuelManager {
                 duel.getBossBar().setProgress((float) remaining / duel.getSettings().getDurationSeconds());
             }
 
+            enforceSpectatorLeash(duel, server);
             if (duel.isMatchmaking()) {
                 enforceArenaBounds(duel, server);
             }
@@ -955,6 +957,44 @@ public class DuelManager {
             return 0;
         }
         return team1Score > team2Score ? 1 : 2;
+    }
+
+    private static void enforceSpectatorLeash(ActiveTeamDuel duel, MinecraftServer server) {
+        double leashDistanceSqr = SPECTATOR_LEASH_RADIUS * SPECTATOR_LEASH_RADIUS;
+        for (UUID playerId : duel.allPlayers()) {
+            if (!duel.isEliminated(playerId)) {
+                continue;
+            }
+            ServerPlayer spectator = server.getPlayerList().getPlayer(playerId);
+            if (spectator == null) {
+                continue;
+            }
+            List<UUID> team = duel.getTeam(playerId) == 1 ? duel.getTeam1() : duel.getTeam2();
+            ServerPlayer nearestAliveTeammate = null;
+            double nearestDistanceSqr = Double.MAX_VALUE;
+            for (UUID teammateId : team) {
+                if (teammateId.equals(playerId) || duel.isEliminated(teammateId)) {
+                    continue;
+                }
+                ServerPlayer teammate = server.getPlayerList().getPlayer(teammateId);
+                if (teammate == null) {
+                    continue;
+                }
+                double distanceSqr = spectator.distanceToSqr(teammate);
+                if (distanceSqr < nearestDistanceSqr) {
+                    nearestDistanceSqr = distanceSqr;
+                    nearestAliveTeammate = teammate;
+                }
+            }
+            if (nearestAliveTeammate == null || nearestDistanceSqr <= leashDistanceSqr) {
+                continue;
+            }
+            spectator.teleportTo(
+                nearestAliveTeammate.getX() + 0.6,
+                nearestAliveTeammate.getY() + 0.1,
+                nearestAliveTeammate.getZ() + 0.6
+            );
+        }
     }
 
     private static void updateSupportPoints(ActiveTeamDuel duel, MinecraftServer server) {

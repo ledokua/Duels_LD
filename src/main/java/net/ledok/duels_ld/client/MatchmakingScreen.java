@@ -130,6 +130,11 @@ public class MatchmakingScreen extends Screen {
         this.elo2v2 = twoVTwo;
     }
 
+    public static void applyQueueState(boolean in1v1, boolean in2v2) {
+        queuedAt1v1 = in1v1 ? (queuedAt1v1 < 0 ? System.currentTimeMillis() : queuedAt1v1) : -1;
+        queuedAt2v2 = in2v2 ? (queuedAt2v2 < 0 ? System.currentTimeMillis() : queuedAt2v2) : -1;
+    }
+
     private String formatElapsed(long startMs) {
         if (startMs < 0) {
             return Component.translatable("duels_ld.screen.matchmaking.queue_time_none").getString();

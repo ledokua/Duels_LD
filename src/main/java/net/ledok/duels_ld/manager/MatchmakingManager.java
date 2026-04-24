@@ -7,6 +7,7 @@ import net.ledok.duels_ld.network.JoinQueuePayload;
 import net.ledok.duels_ld.network.LeaveQueuePayload;
 import net.ledok.duels_ld.network.OpenLobbyRequestPayload;
 import net.ledok.duels_ld.network.OpenLobbyScreenPayload;
+import net.ledok.duels_ld.network.QueueStatePayload;
 import net.ledok.duels_ld.network.UpdateMatchmakingSettingsPayload;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -34,6 +35,9 @@ public class MatchmakingManager {
             UUID playerId = handler.getPlayer().getUUID();
             leaveAllQueues(playerId);
         });
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            sendQueueState(handler.getPlayer());
+        });
 
         ServerPlayNetworking.registerGlobalReceiver(JoinQueuePayload.TYPE, (payload, context) -> {
             context.server().execute(() -> joinQueue(context.player(), payload.mode()));
@@ -54,10 +58,12 @@ public class MatchmakingManager {
             player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.cannot_queue_busy"));
             return;
         }
+        boolean updated = false;
         if (mode == JoinQueuePayload.MODE_1V1) {
             if (!containsEntry(queue1v1, player.getUUID())) {
                 queue1v1.add(new QueueEntry(player.getUUID()));
                 player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.queued_1v1"));
+                updated = true;
             }
         } else if (mode == JoinQueuePayload.MODE_2V2) {
             if (PartyManager.isInParty(player.getUUID())) {
@@ -84,15 +90,21 @@ public class MatchmakingManager {
                         ServerPlayer target = player.server.getPlayerList().getPlayer(member);
                         if (target != null) {
                             target.sendSystemMessage(Component.translatable("duels_ld.matchmaking.party_leader_searching"));
+                            sendQueueState(target);
                         }
                     }
+                    sendQueueState(player);
                 }
                 return;
             }
             if (!containsEntry(queue2v2, player.getUUID())) {
                 queue2v2.add(new QueueEntry(player.getUUID()));
                 player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.queued_2v2"));
+                updated = true;
             }
+        }
+        if (updated) {
+            sendQueueState(player);
         }
     }
 
@@ -101,7 +113,13 @@ public class MatchmakingManager {
         boolean pendingRemoved = removeFromPending(playerId);
         boolean partyRemoved = removePartyFromQueue(playerId);
         if (removed || pendingRemoved || partyRemoved) {
-            // Best-effort: no player instance here
+            MinecraftServer server = ArenaManager.getServer();
+            if (server != null) {
+                ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+                if (player != null) {
+                    sendQueueState(player);
+                }
+            }
         }
     }
 
@@ -111,6 +129,7 @@ public class MatchmakingManager {
         boolean partyRemoved = removePartyFromQueue(player.getUUID());
         if (removed || pendingRemoved || partyRemoved) {
             player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.left_queue"));
+            sendQueueState(player);
         } else {
             player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.not_in_queue"));
         }
@@ -208,6 +227,8 @@ public class MatchmakingManager {
             removeFromOtherQueues(p2.getUUID());
             notifyPending(p1, Component.translatable("duels_ld.matchmaking.pending_1v1"));
             notifyPending(p2, Component.translatable("duels_ld.matchmaking.pending_1v1"));
+            sendQueueState(p1);
+            sendQueueState(p2);
             return;
         }
         List<net.minecraft.core.BlockPos> t1 = ArenaManager.pickSpawns(arena, 1, 1);
@@ -219,6 +240,8 @@ public class MatchmakingManager {
             removeFromOtherQueues(p2.getUUID());
             notifyPending(p1, Component.translatable("duels_ld.matchmaking.pending_1v1"));
             notifyPending(p2, Component.translatable("duels_ld.matchmaking.pending_1v1"));
+            sendQueueState(p1);
+            sendQueueState(p2);
             return;
         }
 
@@ -235,6 +258,8 @@ public class MatchmakingManager {
             t1.get(0).getCenter(),
             t2.get(0).getCenter()
         );
+        sendQueueState(p1);
+        sendQueueState(p2);
     }
 
     private static void processQueue2v2(MinecraftServer server) {
@@ -297,6 +322,8 @@ public class MatchmakingManager {
             t1.get(0).getCenter(),
             t2.get(0).getCenter()
         );
+        sendQueueState(p1);
+        sendQueueState(p2);
     }
 
     private static void processPending2v2(MinecraftServer server) {
@@ -342,6 +369,10 @@ public class MatchmakingManager {
             t2.get(0).getCenter(),
             t2.get(1).getCenter()
         );
+        sendQueueState(p1);
+        sendQueueState(p2);
+        sendQueueState(p3);
+        sendQueueState(p4);
     }
 
     private static void cleanQueue(ArrayDeque<QueueEntry> queue, MinecraftServer server) {
@@ -351,11 +382,18 @@ public class MatchmakingManager {
             QueueEntry entry = iterator.next();
             if (!seen.add(entry.playerId)) {
                 iterator.remove();
+                ServerPlayer player = server.getPlayerList().getPlayer(entry.playerId);
+                if (player != null) {
+                    sendQueueState(player);
+                }
                 continue;
             }
             ServerPlayer player = server.getPlayerList().getPlayer(entry.playerId);
             if (player == null || ActivityManager.isPlayerBusy(entry.playerId)) {
                 iterator.remove();
+                if (player != null) {
+                    sendQueueState(player);
+                }
             }
         }
     }
@@ -401,6 +439,10 @@ public class MatchmakingManager {
             PartyManager.Party party = PartyManager.getPartyByLeader(leader);
             if (party == null || party.members.size() != 2) {
                 iterator.remove();
+                ServerPlayer leaderPlayer = server.getPlayerList().getPlayer(leader);
+                if (leaderPlayer != null) {
+                    sendQueueState(leaderPlayer);
+                }
                 continue;
             }
             boolean allOnline = true;
@@ -412,6 +454,10 @@ public class MatchmakingManager {
             }
             if (!allOnline) {
                 iterator.remove();
+                ServerPlayer leaderPlayer = server.getPlayerList().getPlayer(leader);
+                if (leaderPlayer != null) {
+                    sendQueueState(leaderPlayer);
+                }
             }
         }
     }
@@ -499,6 +545,10 @@ public class MatchmakingManager {
             notifyPending(p2, Component.translatable("duels_ld.matchmaking.pending_2v2"));
             notifyPending(p3, Component.translatable("duels_ld.matchmaking.pending_2v2"));
             notifyPending(p4, Component.translatable("duels_ld.matchmaking.pending_2v2"));
+            sendQueueState(p1);
+            sendQueueState(p2);
+            sendQueueState(p3);
+            sendQueueState(p4);
             return true;
         }
 
@@ -520,6 +570,10 @@ public class MatchmakingManager {
             t2.get(0).getCenter(),
             t2.get(1).getCenter()
         );
+        sendQueueState(p1);
+        sendQueueState(p2);
+        sendQueueState(p3);
+        sendQueueState(p4);
         return true;
     }
 
@@ -667,5 +721,30 @@ public class MatchmakingManager {
             this.playerId = playerId;
             this.joinTime = System.currentTimeMillis();
         }
+    }
+
+    private static void sendQueueState(ServerPlayer player) {
+        UUID playerId = player.getUUID();
+        ServerPlayNetworking.send(player, new QueueStatePayload(isQueued1v1(playerId), isQueued2v2(playerId)));
+    }
+
+    private static boolean isQueued1v1(UUID playerId) {
+        return containsEntry(queue1v1, playerId) || containsPending(pending1v1, playerId);
+    }
+
+    private static boolean isQueued2v2(UUID playerId) {
+        UUID leader = PartyManager.getLeader(playerId);
+        return containsEntry(queue2v2, playerId)
+            || (leader != null && containsEntry(partyQueue2v2, leader))
+            || containsPending(pending2v2, playerId);
+    }
+
+    private static boolean containsPending(ArrayDeque<List<UUID>> pending, UUID playerId) {
+        for (List<UUID> match : pending) {
+            if (match.contains(playerId)) {
+                return true;
+            }
+        }
+        return false;
     }
 }
