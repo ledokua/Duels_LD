@@ -174,5 +174,22 @@
   "duels_ld.placeholder.arena_status_free": "Free",
   "duels_ld.placeholder.arena_status_occupied": "Occupied",
   "duels_ld.placeholder.arena_status_line": "Arena %s -- %s",
-  "duels_ld.placeholder.arena_status_none": "No arenas defined."
+  "duels_ld.placeholder.arena_status_none": "No arenas defined.",
+  "duels_ld.wager.none": "no wager",
+  "duels_ld.wager.currency": "%s LC",
+  "duels_ld.wager.item": "%dx %s",
+  "duels_ld.challenge.sent": "Challenge sent to %s (%s). They have 60 seconds to /duel accept.",
+  "duels_ld.challenge.received": "%s has challenged you (%s). Use /duel accept %s to accept.",
+  "duels_ld.challenge.no_pending": "You have no pending challenges.",
+  "duels_ld.challenge.no_pending_from": "You have no pending challenge from %s.",
+  "duels_ld.challenge.cancelled_busy": "Challenge cancelled — one of the players is already busy.",
+  "duels_ld.challenge.cannot_self": "You cannot challenge yourself.",
+  "duels_ld.challenge.you_busy": "You are already busy and cannot send challenges.",
+  "duels_ld.challenge.target_busy": "%s is busy and cannot be challenged.",
+  "duels_ld.challenge.economy_missing": "Currency wagers require the Economy_LD mod.",
+  "duels_ld.challenge.need_item_in_hand": "Hold the item you want to wager in your main hand.",
+  "duels_ld.challenge.not_enough_items": "You do not have enough of that item to wager.",
+  "duels_ld.challenge.insufficient_funds": "Insufficient funds for the wager.",
+  "duels_ld.challenge.challenger_short": "Challenger does not have the required wager.",
+  "duels_ld.challenge.escrow_failed": "Failed to set up the wager. Please try again."
 }

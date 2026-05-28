@@ -1,11 +1,12 @@
 package net.ledok.duels_ld.manager;
 
+import net.ledok.busylib.BusyReasons;
 import net.ledok.busylib.BusyState;
 
 import java.util.UUID;
 
 public class ActivityManager {
-    private static final String BUSY_REASON = "duels_ld";
+    private static final String BUSY_REASON = BusyReasons.IN_DUEL;
 
     public static boolean isPlayerBusy(UUID playerUUID) {
         return BusyState.isBusy(playerUUID);

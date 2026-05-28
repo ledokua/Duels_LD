@@ -2,6 +2,7 @@ package net.ledok.duels_ld.command;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.arguments.LongArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
@@ -10,6 +11,10 @@ import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import net.ledok.duels_ld.manager.*;
 import net.ledok.duels_ld.network.OpenAdminGuiPayload;
 import net.ledok.duels_ld.network.SyncMatchmakingSettingsPayload;
+import net.ledok.duels_ld.wager.ChallengeManager;
+import net.ledok.duels_ld.wager.Wager;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.EntityArgument;
@@ -45,6 +50,18 @@ public class DuelCommand {
                     .executes(DuelCommand::queue)))
             .then(Commands.literal("leavequeue")
                 .executes(DuelCommand::leaveQueue))
+            .then(Commands.literal("challenge")
+                .then(Commands.argument("target", EntityArgument.player())
+                    .executes(DuelCommand::challengeNoWager)
+                    .then(Commands.literal("currency")
+                        .then(Commands.argument("amount", LongArgumentType.longArg(1L))
+                            .executes(DuelCommand::challengeCurrency)))
+                    .then(Commands.literal("item")
+                        .then(Commands.argument("count", IntegerArgumentType.integer(1))
+                            .executes(DuelCommand::challengeItem)))))
+            .then(Commands.literal("accept")
+                .then(Commands.argument("challenger", EntityArgument.player())
+                    .executes(DuelCommand::challengeAccept)))
             .then(Commands.literal("admingui")
                 .requires(source -> source.hasPermission(2))
                 .executes(DuelCommand::openAdminGui))
@@ -179,6 +196,37 @@ public class DuelCommand {
             config.weights.killBonus
         ));
         return 1;
+    }
+
+    private static int challengeNoWager(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        ServerPlayer challenger = context.getSource().getPlayerOrException();
+        ServerPlayer target = EntityArgument.getPlayer(context, "target");
+        return ChallengeManager.challenge(challenger, target, Wager.none()) ? 1 : 0;
+    }
+
+    private static int challengeCurrency(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        ServerPlayer challenger = context.getSource().getPlayerOrException();
+        ServerPlayer target = EntityArgument.getPlayer(context, "target");
+        long amount = LongArgumentType.getLong(context, "amount");
+        return ChallengeManager.challenge(challenger, target, Wager.currency(amount)) ? 1 : 0;
+    }
+
+    private static int challengeItem(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        ServerPlayer challenger = context.getSource().getPlayerOrException();
+        ServerPlayer target = EntityArgument.getPlayer(context, "target");
+        int count = IntegerArgumentType.getInteger(context, "count");
+        ItemStack inHand = challenger.getItemInHand(InteractionHand.MAIN_HAND);
+        if (inHand.isEmpty()) {
+            context.getSource().sendFailure(Component.translatable("duels_ld.challenge.need_item_in_hand"));
+            return 0;
+        }
+        return ChallengeManager.challenge(challenger, target, Wager.item(inHand, count)) ? 1 : 0;
+    }
+
+    private static int challengeAccept(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        ServerPlayer target = context.getSource().getPlayerOrException();
+        ServerPlayer challenger = EntityArgument.getPlayer(context, "challenger");
+        return ChallengeManager.accept(target, challenger) ? 1 : 0;
     }
 
     private static int partyCreate(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {

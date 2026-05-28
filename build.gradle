@@ -42,6 +42,16 @@ dependencies {
             include: ["BusyLib-*.jar"],
             exclude: ["*sources.jar"]
     )
+    modCompileOnly fileTree(
+            dir: "${project.projectDir}/libs",
+            include: ["Economy_LD-*.jar"],
+            exclude: ["*sources.jar"]
+    )
+    modRuntimeOnly fileTree(
+            dir: "${project.projectDir}/libs",
+            include: ["Economy_LD-*.jar"],
+            exclude: ["*sources.jar"]
+    )
 }
 
 processResources {

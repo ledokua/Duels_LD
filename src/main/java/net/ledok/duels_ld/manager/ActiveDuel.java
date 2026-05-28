@@ -28,6 +28,7 @@ public class ActiveDuel {
     private String arenaName;
     private boolean matchmaking;
     private volatile EndRequest pendingEndRequest;
+    private net.ledok.duels_ld.wager.Wager wager;
 
     public ActiveDuel(UUID player1, UUID player2, DuelSettings settings, String teamName, float p1Hp, float p2Hp) {
         this.player1 = player1;
@@ -128,6 +129,14 @@ public class ActiveDuel {
 
     public void setMatchmaking(boolean matchmaking) {
         this.matchmaking = matchmaking;
+    }
+
+    public net.ledok.duels_ld.wager.Wager getWager() {
+        return wager;
+    }
+
+    public void setWager(net.ledok.duels_ld.wager.Wager wager) {
+        this.wager = wager;
     }
 
     public void setSpawnPosition(UUID player, net.minecraft.world.phys.Vec3 pos) {

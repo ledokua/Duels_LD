@@ -28,6 +28,7 @@
   },
   "suggests": {
     "holodisplays": "*",
-    "placeholder-api": "*"
+    "placeholder-api": "*",
+    "economy_ld": "*"
   }
 }

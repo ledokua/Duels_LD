@@ -77,6 +77,7 @@ public class MatchmakingConfigManager {
         public int mmrRangeIncrease = 50;
         public int mmrRangeIncreaseSeconds = 15;
         public int mmrRangeMax = 400;
+        public int currencyWagerTaxPercent = 5;
 
         public static MatchmakingConfig defaults() {
             return new MatchmakingConfig();
