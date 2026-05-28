@@ -94,7 +94,8 @@ public final class ChallengeManager {
             target.sendSystemMessage(Component.translatable("duels_ld.challenge.no_pending_from", challenger.getName().getString()));
             return false;
         }
-        queue.remove(match);
+        final PendingChallenge accepted = match;
+        queue.remove(accepted);
         if (queue.isEmpty()) {
             pending.remove(target.getUUID());
         }
@@ -104,29 +105,29 @@ public final class ChallengeManager {
             return false;
         }
 
-        if (match.wager.getKind() == Wager.Kind.ITEM) {
-            int taSide = countMatchingItems(target, match.wager.getItemTemplate());
-            if (taSide < match.wager.getItemCount()) {
+        if (accepted.wager.getKind() == Wager.Kind.ITEM) {
+            int taSide = countMatchingItems(target, accepted.wager.getItemTemplate());
+            if (taSide < accepted.wager.getItemCount()) {
                 target.sendSystemMessage(Component.translatable("duels_ld.challenge.not_enough_items"));
                 return false;
             }
-            int chSide = countMatchingItems(challenger, match.wager.getItemTemplate());
-            if (chSide < match.wager.getItemCount()) {
+            int chSide = countMatchingItems(challenger, accepted.wager.getItemTemplate());
+            if (chSide < accepted.wager.getItemCount()) {
                 challenger.sendSystemMessage(Component.translatable("duels_ld.challenge.not_enough_items"));
                 target.sendSystemMessage(Component.translatable("duels_ld.challenge.challenger_short"));
                 return false;
             }
-            int taken = removeMatchingItems(challenger, match.wager.getItemTemplate(), match.wager.getItemCount())
-                    + removeMatchingItems(target, match.wager.getItemTemplate(), match.wager.getItemCount());
-            if (taken < match.wager.getItemCount() * 2) {
+            int taken = removeMatchingItems(challenger, accepted.wager.getItemTemplate(), accepted.wager.getItemCount())
+                    + removeMatchingItems(target, accepted.wager.getItemTemplate(), accepted.wager.getItemCount());
+            if (taken < accepted.wager.getItemCount() * 2) {
                 DuelsLdMod.LOGGER.warn("Item wager escrow under-taken: {}", taken);
             }
-            startEscrowedDuel(challenger, target, match.wager);
+            startEscrowedDuel(challenger, target, accepted.wager);
             return true;
         }
 
-        if (match.wager.getKind() == Wager.Kind.CURRENCY) {
-            long amount = match.wager.getCurrencyAmount();
+        if (accepted.wager.getKind() == Wager.Kind.CURRENCY) {
+            long amount = accepted.wager.getCurrencyAmount();
             EconomyBridge.takeCurrency(challenger.getUUID(), challenger.getName().getString(), amount)
                     .thenCompose(challengerOk -> {
                         if (!Boolean.TRUE.equals(challengerOk)) {
@@ -153,13 +154,13 @@ public final class ChallengeManager {
                                 target.sendSystemMessage(Component.translatable("duels_ld.challenge.challenger_short"));
                             }
                             case TARGET_INSUFFICIENT -> target.sendSystemMessage(Component.translatable("duels_ld.challenge.insufficient_funds"));
-                            case OK -> startEscrowedDuel(challenger, target, match.wager);
+                            case OK -> startEscrowedDuel(challenger, target, accepted.wager);
                         }
                     }));
             return true;
         }
 
-        startEscrowedDuel(challenger, target, match.wager);
+        startEscrowedDuel(challenger, target, accepted.wager);
         return true;
     }
 
