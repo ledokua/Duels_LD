@@ -73,6 +73,9 @@ public class MatchmakingConfigManager {
         public MatchSettings oneVOne = new MatchSettings(DuelSettings.DEFAULT_DURATION_SECONDS, 0);
         public MatchSettings twoVTwo = new MatchSettings(DuelSettings.DEFAULT_DURATION_SECONDS, 0);
 
+        // ── Battle behavior ─────────────────────────────────────────────
+        public BattleConfig battle = new BattleConfig();
+
         // ── Rating & matchmaking ────────────────────────────────────────
         public EloSettings elo = new EloSettings(32, 1000);
         public int mmrRangeStart = 100;
@@ -87,6 +90,18 @@ public class MatchmakingConfigManager {
         public static MatchmakingConfig defaults() {
             return new MatchmakingConfig();
         }
+    }
+
+    /** Per-battle behavior. */
+    public static class BattleConfig {
+        // Pre-fight countdown length in seconds (the "starting in N" before FIGHT).
+        public int countdownSeconds = 10;
+        // How long a disconnected player has to reconnect before forfeiting (timer pauses meanwhile).
+        public int reconnectGraceSeconds = 60;
+        // Heal players to full and refill hunger when the battle starts.
+        public boolean healAndFeedAtStart = true;
+        // Game mode applied during a battle (e.g. ADVENTURE or SURVIVAL for block-breaking arenas).
+        public String inBattleGameMode = "ADVENTURE";
     }
 
     /** Currency rewards for matchmade battles (paid via Economy_LD), with anti-farm limits. */

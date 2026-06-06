@@ -21,7 +21,8 @@ public abstract class ActiveMatch {
     private final ServerBossEvent bossBar;
     private long startTime;
     private boolean countdown = true;
-    private int countdownSeconds = 10;
+    private final int initialCountdownSeconds;
+    private int countdownSeconds;
     private int countdownTicks = 0;
     private String arenaName;
     private boolean matchmaking;
@@ -30,6 +31,8 @@ public abstract class ActiveMatch {
 
     protected ActiveMatch(DuelSettings settings) {
         this.settings = settings;
+        this.initialCountdownSeconds = Math.max(1, MatchmakingConfigManager.getConfig().battle.countdownSeconds);
+        this.countdownSeconds = this.initialCountdownSeconds;
         this.bossBar = new ServerBossEvent(
             Component.translatable("duels_ld.duel.boss_starting", countdownSeconds),
             BossEvent.BossBarColor.RED,
@@ -55,6 +58,7 @@ public abstract class ActiveMatch {
     public boolean isCountdown() { return countdown; }
     public void setCountdown(boolean countdown) { this.countdown = countdown; }
     public int getCountdownSeconds() { return countdownSeconds; }
+    public int getInitialCountdownSeconds() { return initialCountdownSeconds; }
     public void decrementCountdown() { countdownSeconds--; }
     public int getCountdownTicks() { return countdownTicks; }
     public void incrementCountdownTicks() { countdownTicks++; }

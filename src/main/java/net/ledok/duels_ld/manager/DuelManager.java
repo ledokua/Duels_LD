@@ -37,9 +37,6 @@ public class DuelManager {
     private static final long BOUNDS_TELEPORT_COOLDOWN_MS = 2000;
     private static final double COUNTDOWN_FREEZE_THRESHOLD_SQR = 0.25;
     private static final double SPECTATOR_LEASH_RADIUS = 8.0;
-    // How long a disconnected player has to reconnect before they forfeit the duel. While anyone
-    // is within this window the duel timer is paused.
-    private static final long RECONNECT_GRACE_MS = 60_000L;
 
     public static void init() {
         ServerTickEvents.END_SERVER_TICK.register(DuelManager::onServerTick);
@@ -306,27 +303,24 @@ public class DuelManager {
         backupStore.putIfAbsent(player1.getUUID(), PlayerBackup.capture(player1));
         backupStore.putIfAbsent(player2.getUUID(), PlayerBackup.capture(player2));
 
-        player1.setGameMode(GameType.ADVENTURE);
-        player2.setGameMode(GameType.ADVENTURE);
+        player1.setGameMode(battleGameMode());
+        player2.setGameMode(battleGameMode());
 
         ActiveDuel duel = new ActiveDuel(player1.getUUID(), player2.getUUID(), settings, teamName, player1.getHealth(), player2.getHealth());
         activeDuels.put(player1.getUUID(), duel);
         activeDuels.put(player2.getUUID(), duel);
         duel.setFreezePosition(player1.getUUID(), player1.position());
         duel.setFreezePosition(player2.getUUID(), player2.position());
-        
+
         duel.getBossBar().addPlayer(player1);
         duel.getBossBar().addPlayer(player2);
 
-        player1.setHealth(player1.getMaxHealth());
-        player2.setHealth(player2.getMaxHealth());
-        player1.getFoodData().setFoodLevel(20);
-        player2.getFoodData().setFoodLevel(20);
-        player1.getFoodData().setSaturation(20.0f);
-        player2.getFoodData().setSaturation(20.0f);
+        healAndFeed(player1);
+        healAndFeed(player2);
 
-        player1.sendSystemMessage(Component.translatable("duels_ld.duel.starting_soon", 10));
-        player2.sendSystemMessage(Component.translatable("duels_ld.duel.starting_soon", 10));
+        int countdown = duel.getInitialCountdownSeconds();
+        player1.sendSystemMessage(Component.translatable("duels_ld.duel.starting_soon", countdown));
+        player2.sendSystemMessage(Component.translatable("duels_ld.duel.starting_soon", countdown));
     }
 
     public static void startMatchmakingDuel(ServerPlayer player1, ServerPlayer player2, DuelSettings settings, ArenaManager.Arena arena, ArenaManager.SpawnPoint spawn1, ArenaManager.SpawnPoint spawn2) {
@@ -406,10 +400,10 @@ public class DuelManager {
         scoreboard.addPlayerToTeam(p3.getScoreboardName(), team2);
         scoreboard.addPlayerToTeam(p4.getScoreboardName(), team2);
 
-        p1.setGameMode(GameType.ADVENTURE);
-        p2.setGameMode(GameType.ADVENTURE);
-        p3.setGameMode(GameType.ADVENTURE);
-        p4.setGameMode(GameType.ADVENTURE);
+        p1.setGameMode(battleGameMode());
+        p2.setGameMode(battleGameMode());
+        p3.setGameMode(battleGameMode());
+        p4.setGameMode(battleGameMode());
 
         Map<UUID, Float> startHealth = new HashMap<>();
         startHealth.put(p1.getUUID(), p1.getHealth());
@@ -432,23 +426,15 @@ public class DuelManager {
         duel.getBossBar().addPlayer(p3);
         duel.getBossBar().addPlayer(p4);
 
-        p1.setHealth(p1.getMaxHealth());
-        p2.setHealth(p2.getMaxHealth());
-        p3.setHealth(p3.getMaxHealth());
-        p4.setHealth(p4.getMaxHealth());
-        p1.getFoodData().setFoodLevel(20);
-        p2.getFoodData().setFoodLevel(20);
-        p3.getFoodData().setFoodLevel(20);
-        p4.getFoodData().setFoodLevel(20);
-        p1.getFoodData().setSaturation(20.0f);
-        p2.getFoodData().setSaturation(20.0f);
-        p3.getFoodData().setSaturation(20.0f);
-        p4.getFoodData().setSaturation(20.0f);
+        healAndFeed(p1);
+        healAndFeed(p2);
+        healAndFeed(p3);
+        healAndFeed(p4);
 
-        p1.sendSystemMessage(Component.translatable("duels_ld.duel.starting_soon", 10));
-        p2.sendSystemMessage(Component.translatable("duels_ld.duel.starting_soon", 10));
-        p3.sendSystemMessage(Component.translatable("duels_ld.duel.starting_soon", 10));
-        p4.sendSystemMessage(Component.translatable("duels_ld.duel.starting_soon", 10));
+        int countdown = duel.getInitialCountdownSeconds();
+        for (ServerPlayer p : List.of(p1, p2, p3, p4)) {
+            p.sendSystemMessage(Component.translatable("duels_ld.duel.starting_soon", countdown));
+        }
 
         duel.setFreezePosition(p1.getUUID(), p1.position());
         duel.setFreezePosition(p2.getUUID(), p2.position());
@@ -576,7 +562,7 @@ public class DuelManager {
                         p2.sendSystemMessage(Component.translatable("duels_ld.duel.fight"));
                     } else {
                         duel.getBossBar().setName(Component.translatable("duels_ld.duel.boss_starting", duel.getCountdownSeconds()));
-                        duel.getBossBar().setProgress((float)duel.getCountdownSeconds() / 10.0f);
+                        duel.getBossBar().setProgress((float) duel.getCountdownSeconds() / duel.getInitialCountdownSeconds());
                     }
                 }
             } else {
@@ -781,13 +767,33 @@ public class DuelManager {
     }
     
     /** True once the player's reconnect window has elapsed. Starts the window if not yet tracked. */
+    private static long reconnectGraceMs() {
+        return Math.max(0, MatchmakingConfigManager.getConfig().battle.reconnectGraceSeconds) * 1000L;
+    }
+
+    private static GameType battleGameMode() {
+        return GameType.byName(
+            MatchmakingConfigManager.getConfig().battle.inBattleGameMode.toLowerCase(java.util.Locale.ROOT),
+            GameType.ADVENTURE);
+    }
+
+    /** Heals + refills hunger if configured (so a battle starts everyone at full). */
+    private static void healAndFeed(ServerPlayer player) {
+        if (!MatchmakingConfigManager.getConfig().battle.healAndFeedAtStart) {
+            return;
+        }
+        player.setHealth(player.getMaxHealth());
+        player.getFoodData().setFoodLevel(20);
+        player.getFoodData().setSaturation(20.0f);
+    }
+
     private static boolean graceExpired(ActiveDuel duel, UUID id, long now) {
         Long since = duel.getDisconnectedAt(id);
         if (since == null) {
             duel.markDisconnected(id, now);
             return false;
         }
-        return now - since >= RECONNECT_GRACE_MS;
+        return now - since >= reconnectGraceMs();
     }
 
     private static boolean graceExpired(ActiveTeamDuel duel, UUID id, long now) {
@@ -796,7 +802,7 @@ public class DuelManager {
             duel.markDisconnected(id, now);
             return false;
         }
-        return now - since >= RECONNECT_GRACE_MS;
+        return now - since >= reconnectGraceMs();
     }
 
     /** Marks a mid-duel disconnect so the tick loop pauses instead of forfeiting immediately. */
@@ -806,7 +812,7 @@ public class DuelManager {
         }
         UUID id = player.getUUID();
         long now = System.currentTimeMillis();
-        long graceSeconds = RECONNECT_GRACE_MS / 1000;
+        long graceSeconds = MatchmakingConfigManager.getConfig().battle.reconnectGraceSeconds;
         String name = player.getName().getString();
 
         ActiveDuel duel = activeDuels.get(id);
@@ -865,7 +871,7 @@ public class DuelManager {
 
     private static void resumeIntoArena(ServerPlayer player, Vec3 spawn, Vec3 freeze, float yaw, float pitch,
                                         net.minecraft.server.level.ServerBossEvent bossBar, boolean countdown) {
-        player.setGameMode(GameType.ADVENTURE);
+        player.setGameMode(battleGameMode());
         Vec3 pos = spawn != null ? spawn : freeze;
         if (pos != null) {
             // Same-dimension teleport: the player logs back into the arena dimension they left.
@@ -1047,7 +1053,7 @@ public class DuelManager {
                         }
                     } else {
                         duel.getBossBar().setName(Component.translatable("duels_ld.duel.boss_starting", duel.getCountdownSeconds()));
-                        duel.getBossBar().setProgress((float) duel.getCountdownSeconds() / 10.0f);
+                        duel.getBossBar().setProgress((float) duel.getCountdownSeconds() / duel.getInitialCountdownSeconds());
                     }
                 }
             } else {
