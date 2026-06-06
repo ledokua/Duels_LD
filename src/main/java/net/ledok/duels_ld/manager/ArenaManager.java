@@ -2,6 +2,8 @@ package net.ledok.duels_ld.manager;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.ledok.duels_ld.DuelsLdMod;
 import net.minecraft.core.BlockPos;
@@ -15,7 +17,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -23,6 +24,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 public class ArenaManager {
@@ -38,9 +40,9 @@ public class ArenaManager {
             server = srv;
             arenasFile = srv.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
                 .resolve("duel_arenas.json").toFile();
-            load();
         });
-        ServerLifecycleEvents.SERVER_STOPPING.register(srv -> save());
+        // Load after worlds are ready (SavedData needs the overworld's data storage).
+        ServerLifecycleEvents.SERVER_STARTED.register(srv -> load());
     }
 
     public static boolean createArena(String name, ResourceKey<Level> dimension) {
@@ -238,33 +240,38 @@ public class ArenaManager {
 
     private static void load() {
         arenas.clear();
-        if (arenasFile == null || !arenasFile.exists()) {
-            save();
+        if (server == null) {
             return;
         }
-        try (FileReader reader = new FileReader(arenasFile)) {
-            ArenasFile data = GSON.fromJson(reader, ArenasFile.class);
-            if (data != null && data.arenas != null) {
-                for (Arena a : data.arenas) {
-                    arenas.put(a.name, a);
-                }
+        List<Arena> stored = ArenaSavedData.get(server).getArenas();
+        if (!stored.isEmpty()) {
+            for (Arena a : stored) {
+                arenas.put(a.name, a);
             }
-        } catch (IOException e) {
-            LOGGER.error("Failed to load arenas.", e);
+            return;
+        }
+        // One-time migration: import the legacy duel_arenas.json into the SavedData store.
+        if (arenasFile != null && arenasFile.exists()) {
+            try (FileReader reader = new FileReader(arenasFile)) {
+                ArenasFile data = GSON.fromJson(reader, ArenasFile.class);
+                if (data != null && data.arenas != null) {
+                    for (Arena a : data.arenas) {
+                        arenas.put(a.name, a);
+                    }
+                    LOGGER.info("Imported {} arena(s) from legacy duel_arenas.json.", arenas.size());
+                }
+            } catch (IOException e) {
+                LOGGER.error("Failed to import legacy arenas.", e);
+            }
+            save();
         }
     }
 
     private static void save() {
-        if (arenasFile == null) {
+        if (server == null) {
             return;
         }
-        ArenasFile data = new ArenasFile();
-        data.arenas = new ArrayList<>(arenas.values());
-        try (FileWriter writer = new FileWriter(arenasFile)) {
-            GSON.toJson(data, writer);
-        } catch (IOException e) {
-            LOGGER.error("Failed to save arenas.", e);
-        }
+        ArenaSavedData.get(server).setArenas(new ArrayList<>(arenas.values()));
     }
 
     public static class Arena {
@@ -280,6 +287,25 @@ public class ArenaManager {
         public Arena(String name, String dimensionId) {
             this.name = name;
             this.dimensionId = dimensionId;
+        }
+
+        public static final Codec<Arena> CODEC = RecordCodecBuilder.create(i -> i.group(
+            Codec.STRING.fieldOf("name").forGetter(a -> a.name),
+            Codec.STRING.fieldOf("dimension").forGetter(a -> a.dimensionId),
+            BlockPos.CODEC.optionalFieldOf("pos1").forGetter(a -> Optional.ofNullable(a.pos1)),
+            BlockPos.CODEC.optionalFieldOf("pos2").forGetter(a -> Optional.ofNullable(a.pos2)),
+            SpawnPoint.CODEC.listOf().optionalFieldOf("team1", List.of()).forGetter(a -> a.team1Spawns),
+            SpawnPoint.CODEC.listOf().optionalFieldOf("team2", List.of()).forGetter(a -> a.team2Spawns)
+        ).apply(i, Arena::fromCodec));
+
+        private static Arena fromCodec(String name, String dimension, Optional<BlockPos> pos1, Optional<BlockPos> pos2,
+                                       List<SpawnPoint> team1, List<SpawnPoint> team2) {
+            Arena arena = new Arena(name, dimension);
+            arena.pos1 = pos1.orElse(null);
+            arena.pos2 = pos2.orElse(null);
+            arena.team1Spawns = new ArrayList<>(team1);
+            arena.team2Spawns = new ArrayList<>(team2);
+            return arena;
         }
 
         public ResourceKey<Level> getDimensionKey() {
@@ -304,6 +330,14 @@ public class ArenaManager {
         public float pitch;
 
         public SpawnPoint() {}
+
+        public static final Codec<SpawnPoint> CODEC = RecordCodecBuilder.create(i -> i.group(
+            Codec.INT.fieldOf("x").forGetter(s -> s.x),
+            Codec.INT.fieldOf("y").forGetter(s -> s.y),
+            Codec.INT.fieldOf("z").forGetter(s -> s.z),
+            Codec.FLOAT.optionalFieldOf("yaw", 0.0f).forGetter(s -> s.yaw),
+            Codec.FLOAT.optionalFieldOf("pitch", 0.0f).forGetter(s -> s.pitch)
+        ).apply(i, (x, y, z, yaw, pitch) -> new SpawnPoint(new BlockPos(x, y, z), yaw, pitch)));
 
         public SpawnPoint(BlockPos pos, float yaw, float pitch) {
             this.x = pos.getX();
