@@ -43,22 +43,31 @@ public class DuelManager {
         ServerTickEvents.END_SERVER_TICK.register(DuelManager::onServerTick);
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-            ServerPlayer player = handler.getPlayer();
-            UUID playerId = player.getUUID();
+            UUID playerId = handler.getPlayer().getUUID();
             if (!duelBackups.containsKey(playerId)) {
                 return;
             }
-            ActiveTeamDuel teamDuel = activeTeamDuels.get(playerId);
-            if (teamDuel != null) {
-                if (teamDuel.isEliminated(playerId)) {
-                    player.setGameMode(GameType.SPECTATOR);
+            // Defer to the next server-thread task: the JOIN event fires before the player is
+            // fully registered in the destination world's chunk-tracking (DistanceManager/ChunkMap).
+            // Doing a cross-dimension teleport here corrupts that state and leaves a ghost entity
+            // ("Force-added player with duplicate UUID" on the next reconnect).
+            server.execute(() -> {
+                ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+                if (player == null) {
+                    return;
                 }
-                return;
-            }
-            if (!activeDuels.containsKey(playerId)) {
-                restorePlayerFromBackup(player);
-                player.sendSystemMessage(Component.translatable("duels_ld.duel.restore_gamemode").withStyle(ChatFormatting.YELLOW));
-            }
+                ActiveTeamDuel teamDuel = activeTeamDuels.get(playerId);
+                if (teamDuel != null) {
+                    if (teamDuel.isEliminated(playerId)) {
+                        player.setGameMode(GameType.SPECTATOR);
+                    }
+                    return;
+                }
+                if (!activeDuels.containsKey(playerId)) {
+                    restorePlayerFromBackup(player);
+                    player.sendSystemMessage(Component.translatable("duels_ld.duel.restore_gamemode").withStyle(ChatFormatting.YELLOW));
+                }
+            });
         });
         
         AttackEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
@@ -812,7 +821,13 @@ public class DuelManager {
             player.setGameMode(backup.getGameMode());
             ServerLevel level = player.server.getLevel(backup.getDimension());
             if (level != null) {
-                player.teleportTo(level, backup.getPosition().x, backup.getPosition().y, backup.getPosition().z, player.getYRot(), player.getXRot());
+                // Skip the cross-dimension teleport when the player is already in the backup's
+                // dimension (e.g. they logged back in there) to avoid an unnecessary world change.
+                if (player.level().dimension().equals(backup.getDimension())) {
+                    player.teleportTo(backup.getPosition().x, backup.getPosition().y, backup.getPosition().z);
+                } else {
+                    player.teleportTo(level, backup.getPosition().x, backup.getPosition().y, backup.getPosition().z, player.getYRot(), player.getXRot());
+                }
             } else {
                 player.teleportTo(backup.getPosition().x, backup.getPosition().y, backup.getPosition().z);
             }
