@@ -631,8 +631,6 @@ public class DuelManager {
 
         restorePlayer(player1, duel.isMatchmaking());
         restorePlayer(player2, duel.isMatchmaking());
-        restoreHealth(player1, duel.getPlayer1StartHp());
-        restoreHealth(player2, duel.getPlayer2StartHp());
 
         if (draw) {
             if (player1 != null) {
@@ -738,7 +736,6 @@ public class DuelManager {
         for (UUID id : allPlayers) {
             ServerPlayer player = server.getPlayerList().getPlayer(id);
             restorePlayer(player, duel.isMatchmaking());
-            restoreHealth(player, duel.getStartHealth(id));
         }
 
         if (draw) {
@@ -913,6 +910,7 @@ public class DuelManager {
             if (shouldTeleportFromBackup && level != null) {
                 player.teleportTo(level, backup.position().x, backup.position().y, backup.position().z, backup.yaw(), backup.pitch());
             }
+            backup.applyVitals(player); // restore pre-duel HP/hunger so winning grants no free heal
         }
     }
 
@@ -936,19 +934,7 @@ public class DuelManager {
             } else {
                 player.teleportTo(backup.position().x, backup.position().y, backup.position().z);
             }
-        }
-    }
-    
-    private static void restoreHealth(ServerPlayer player, float startHp) {
-        if (player == null) return;
-        float maxHp = player.getMaxHealth();
-
-        // Keep post-duel health from dropping below a floor, but do not heal above half-max.
-        float halfMax = maxHp * 0.5f;
-        float finalTarget = Math.min(startHp, halfMax);
-        
-        if (player.getHealth() < finalTarget) {
-            player.setHealth(finalTarget);
+            backup.applyVitals(player); // restore pre-duel HP/hunger so winning grants no free heal
         }
     }
 

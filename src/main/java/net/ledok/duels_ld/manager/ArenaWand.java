@@ -96,7 +96,7 @@ public final class ArenaWand {
                 }
                 int mode = (wandMode(stack) + 1) % MODE_COUNT;
                 setMode(stack, mode);
-                player.displayClientMessage(Component.translatable("duels_ld.item.arena_wand.mode_set", modeName(mode))
+                player.displayClientMessage(Component.translatable("item.duels_ld.arena_wand.mode_set", modeName(mode))
                     .withStyle(ChatFormatting.LIGHT_PURPLE), true);
             });
         });
@@ -105,7 +105,7 @@ public final class ArenaWand {
     private static void handleClick(ServerPlayer player, ItemStack wand, BlockPos clicked, Direction face, boolean leftClick) {
         String arenaName = wandArena(wand);
         if (arenaName == null) {
-            player.displayClientMessage(Component.translatable("duels_ld.item.arena_wand.unbound").withStyle(ChatFormatting.RED), true);
+            player.displayClientMessage(Component.translatable("item.duels_ld.arena_wand.unbound").withStyle(ChatFormatting.RED), true);
             return;
         }
         ArenaManager.Arena arena = ArenaManager.getArena(arenaName);
@@ -132,7 +132,7 @@ public final class ArenaWand {
             BlockPos spawnPos = clicked.relative(face).immutable();
             boolean added = ArenaManager.toggleSpawn(arenaName, team, spawnPos, player.getYRot(), player.getXRot());
             player.displayClientMessage(Component.translatable(
-                added ? "duels_ld.item.arena_wand.spawn_added" : "duels_ld.item.arena_wand.spawn_removed", team)
+                added ? "item.duels_ld.arena_wand.spawn_added" : "item.duels_ld.arena_wand.spawn_removed", team)
                 .withStyle(added ? ChatFormatting.GREEN : ChatFormatting.YELLOW), true);
         }
         sendOverlay(player, arenaName);
@@ -171,7 +171,7 @@ public final class ArenaWand {
         }
         setArena(wand, arenaName);
         sendOverlay(player, arenaName);
-        player.displayClientMessage(Component.translatable("duels_ld.item.arena_wand.bound_msg", arenaName)
+        player.displayClientMessage(Component.translatable("item.duels_ld.arena_wand.bound_msg", arenaName)
             .withStyle(ChatFormatting.LIGHT_PURPLE), true);
     }
 
@@ -210,7 +210,7 @@ public final class ArenaWand {
         CompoundTag tag = currentTag(stack);
         tag.putString(TAG_KEY, name);
         stack.set(DataComponents.CUSTOM_DATA, CustomData.of(tag));
-        stack.set(DataComponents.CUSTOM_NAME, Component.translatable("duels_ld.item.arena_wand", name)
+        stack.set(DataComponents.CUSTOM_NAME, Component.translatable("item.duels_ld.arena_wand.bound_name", name)
             .withStyle(ChatFormatting.LIGHT_PURPLE));
     }
 
@@ -225,10 +225,10 @@ public final class ArenaWand {
         return data == null ? new CompoundTag() : data.copyTag();
     }
 
-    private static Component modeName(int mode) {
+    public static Component modeName(int mode) {
         return Component.translatable(mode == MODE_SPAWNS
-            ? "duels_ld.item.arena_wand.mode_spawns"
-            : "duels_ld.item.arena_wand.mode_bounds");
+            ? "item.duels_ld.arena_wand.mode_spawns"
+            : "item.duels_ld.arena_wand.mode_bounds");
     }
 
     /** Pushes the current geometry of the named arena to the player for the in-world overlay. */

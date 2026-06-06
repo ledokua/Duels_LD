@@ -42,7 +42,6 @@ public final class ArenaGuiHandler {
                 }
             }
             case "delete" -> ArenaManager.removeArena(name);
-            case "clone" -> ArenaManager.cloneArena(name, p.arg());
             case "bind" -> ArenaWand.bind(player, name);
             case "rename" -> {
                 if (ArenaManager.renameArena(name, p.arg()) && name.equals(ArenaWand.heldWandArena(player))) {

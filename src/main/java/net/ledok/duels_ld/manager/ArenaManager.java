@@ -103,26 +103,6 @@ public class ArenaManager {
         return !removed; // true = added, false = removed
     }
 
-    /** Deep-copies an arena (bounds + spawns) under a new name. Fails if dst exists or src is missing. */
-    public static boolean cloneArena(String src, String dst) {
-        Arena source = arenas.get(src);
-        if (source == null || dst == null || dst.isEmpty() || arenas.containsKey(dst)) {
-            return false;
-        }
-        Arena copy = new Arena(dst, source.dimensionId);
-        copy.pos1 = source.pos1;
-        copy.pos2 = source.pos2;
-        for (SpawnPoint s : source.team1Spawns) {
-            copy.team1Spawns.add(new SpawnPoint(s.pos(), s.yaw, s.pitch));
-        }
-        for (SpawnPoint s : source.team2Spawns) {
-            copy.team2Spawns.add(new SpawnPoint(s.pos(), s.yaw, s.pitch));
-        }
-        arenas.put(dst, copy);
-        save();
-        return true;
-    }
-
     public static List<Arena> listArenas() {
         List<Arena> list = new ArrayList<>(arenas.values());
         list.sort((a, b) -> a.name.compareToIgnoreCase(b.name));

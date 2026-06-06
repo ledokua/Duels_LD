@@ -1,5 +1,6 @@
 package net.ledok.duels_ld.item;
 
+import net.ledok.duels_ld.manager.ArenaWand;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Item;
@@ -20,6 +21,12 @@ public class ArenaWandItem extends Item {
 
     @Override
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
+        tooltip.add(Component.translatable("item.duels_ld.arena_wand.tooltip_mode",
+            ArenaWand.modeName(ArenaWand.wandMode(stack))).withStyle(ChatFormatting.AQUA));
+        String arena = ArenaWand.wandArena(stack);
+        if (arena != null) {
+            tooltip.add(Component.translatable("item.duels_ld.arena_wand.tooltip_arena", arena).withStyle(ChatFormatting.LIGHT_PURPLE));
+        }
         tooltip.add(Component.translatable("item.duels_ld.arena_wand.hint").withStyle(ChatFormatting.GRAY));
     }
 }

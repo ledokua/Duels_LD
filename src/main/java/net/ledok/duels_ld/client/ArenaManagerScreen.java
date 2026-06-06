@@ -240,7 +240,6 @@ public class ArenaManagerScreen extends BaseOwoScreen<FlowLayout> {
             rebuildContent();
         }));
         actions.child(Containers.horizontalFlow(Sizing.expand(), Sizing.content()));
-        actions.child(action(Component.translatable("duels_ld.screen.arena.clone"), 44, ACCENT_DARK, ACCENT, b -> send("clone", e.name(), e.name() + "_copy")));
         actions.child(action(Component.translatable("duels_ld.screen.arena.delete"), 38, DANGER_DARK, DANGER, b -> send("delete", e.name(), "")));
         row.child(actions);
         return row;
