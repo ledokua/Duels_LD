@@ -148,6 +148,10 @@
   "duels_ld.screen.matchmaking.queue_time_2v2": "Q 2v2: %s",
   "duels_ld.screen.matchmaking.queue_time_none": "--:--",
   "duels_ld.screen.matchmaking.party_invite_label": "Party Invite",
+  "duels_ld.screen.matchmaking.online": "ONLINE",
+  "duels_ld.screen.matchmaking.elo_caption": "rating",
+  "duels_ld.screen.matchmaking.status_idle": "Idle",
+  "duels_ld.screen.matchmaking.status_searching": "Searching — %s",
 
   "duels_ld.screen.matchmaking_admin.title": "Matchmaking Settings",
   "duels_ld.screen.matchmaking_admin.one_v_one_time_placeholder": "1v1 time",

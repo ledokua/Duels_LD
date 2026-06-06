@@ -24,7 +24,8 @@
     "fabricloader": ">=${loader_version}",
     "fabric-api": "*",
     "minecraft": "${minecraft_version}",
-    "busylib": "*"
+    "busylib": "*",
+    "owo": ">=0.12.15"
   },
   "suggests": {
     "holodisplays": "*",
