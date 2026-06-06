@@ -2,9 +2,7 @@ package net.ledok.duels_ld.manager;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gson.reflect.TypeToken;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.ledok.duels_ld.DuelsLdMod;
 import net.minecraft.server.MinecraftServer;
 import org.slf4j.Logger;
@@ -12,43 +10,27 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
-import java.lang.reflect.Type;
-import java.nio.file.Files;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MMRManager {
     private static final Logger LOGGER = LoggerFactory.getLogger(DuelsLdMod.MOD_ID);
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static MinecraftServer server;
+    private static MmrSavedData store;
     private static Map<UUID, Integer> mmr1v1 = new ConcurrentHashMap<>();
     private static Map<UUID, Integer> mmr2v2 = new ConcurrentHashMap<>();
-    private static File mmrFile;
-    private static final ExecutorService SAVE_EXECUTOR = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "duels-mmr-save");
-        t.setDaemon(true);
-        return t;
-    });
-    private static final AtomicBoolean dirty = new AtomicBoolean(false);
-    private static int tickCounter = 0;
+    private static File legacyFile;
 
     public static void init() {
-        ServerLifecycleEvents.SERVER_STARTING.register(server -> {
-            mmrFile = getModDataDir(server).resolve("mmr.json").toFile();
-            load();
+        ServerLifecycleEvents.SERVER_STARTING.register(srv -> {
+            server = srv;
+            legacyFile = srv.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
+                .resolve("duels_ld").resolve("mmr.json").toFile();
         });
-        ServerTickEvents.END_SERVER_TICK.register(server -> {
-            if (++tickCounter >= 600) {
-                tickCounter = 0;
-                flushIfDirtyAsync();
-            }
-        });
-        ServerLifecycleEvents.SERVER_STOPPING.register(server -> flushNow());
+        ServerLifecycleEvents.SERVER_STARTED.register(srv -> load());
     }
 
     public static int getRating1v1(UUID player) {
@@ -110,76 +92,32 @@ public class MMRManager {
     }
 
     private static void load() {
-        mmr1v1.clear();
-        mmr2v2.clear();
-        if (mmrFile == null || !mmrFile.exists()) {
-            return;
-        }
-        try (FileReader reader = new FileReader(mmrFile)) {
-            Type type = new TypeToken<MMRFile>(){}.getType();
-            MMRFile data = GSON.fromJson(reader, type);
-            if (data != null) {
-                if (data.mmr1v1 != null) {
-                    mmr1v1.putAll(data.mmr1v1);
+        store = MmrSavedData.get(server);
+        mmr1v1 = store.map1v1();
+        mmr2v2 = store.map2v2();
+        if (mmr1v1.isEmpty() && mmr2v2.isEmpty() && legacyFile != null && legacyFile.exists()) {
+            try (FileReader reader = new FileReader(legacyFile)) {
+                MMRFile data = GSON.fromJson(reader, MMRFile.class);
+                if (data != null) {
+                    if (data.mmr1v1 != null) {
+                        mmr1v1.putAll(data.mmr1v1);
+                    }
+                    if (data.mmr2v2 != null) {
+                        mmr2v2.putAll(data.mmr2v2);
+                    }
+                    store.setDirty();
+                    LOGGER.info("Imported MMR data from legacy mmr.json.");
                 }
-                if (data.mmr2v2 != null) {
-                    mmr2v2.putAll(data.mmr2v2);
-                }
+            } catch (IOException e) {
+                LOGGER.error("Failed to import legacy MMR data.", e);
             }
-        } catch (IOException e) {
-            LOGGER.error("Failed to load MMR data.", e);
         }
     }
 
     private static void markDirty() {
-        dirty.set(true);
-    }
-
-    private static void flushIfDirtyAsync() {
-        if (dirty.getAndSet(false)) {
-            Map<UUID, Integer> snapshot1v1 = new ConcurrentHashMap<>(mmr1v1);
-            Map<UUID, Integer> snapshot2v2 = new ConcurrentHashMap<>(mmr2v2);
-            SAVE_EXECUTOR.execute(() -> saveSnapshot(snapshot1v1, snapshot2v2));
+        if (store != null) {
+            store.setDirty();
         }
-    }
-
-    private static void flushNow() {
-        dirty.set(false);
-        Map<UUID, Integer> snapshot1v1 = new ConcurrentHashMap<>(mmr1v1);
-        Map<UUID, Integer> snapshot2v2 = new ConcurrentHashMap<>(mmr2v2);
-        try {
-            SAVE_EXECUTOR.submit(() -> saveSnapshot(snapshot1v1, snapshot2v2)).get();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            LOGGER.warn("Interrupted while waiting for async MMR save during shutdown.");
-        } catch (Exception e) {
-            LOGGER.error("Failed to flush MMR data during shutdown.", e);
-        }
-    }
-
-    private static void saveSnapshot(Map<UUID, Integer> snapshot1v1, Map<UUID, Integer> snapshot2v2) {
-        if (mmrFile == null) {
-            return;
-        }
-        MMRFile data = new MMRFile();
-        data.mmr1v1 = snapshot1v1;
-        data.mmr2v2 = snapshot2v2;
-        try (FileWriter writer = new FileWriter(mmrFile)) {
-            GSON.toJson(data, writer);
-        } catch (IOException e) {
-            LOGGER.error("Failed to save MMR data.", e);
-        }
-    }
-
-    private static java.nio.file.Path getModDataDir(MinecraftServer server) {
-        java.nio.file.Path dir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
-            .resolve("duels_ld");
-        try {
-            Files.createDirectories(dir);
-        } catch (IOException e) {
-            LOGGER.error("Failed to create mod data directory.", e);
-        }
-        return dir;
     }
 
     private static class MMRFile {
