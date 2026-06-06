@@ -54,6 +54,10 @@ dependencies {
             include: ["Economy_LD-*.jar"],
             exclude: ["*sources.jar"]
     )
+    // Economy_LD bundles its JDBC driver as a jar-in-jar, but Loom does not unpack nested jars
+    // from a local fileTree mod in the dev runtime, so the driver is missing on the classpath
+    // ("No suitable driver found for jdbc:sqlite"). Provide it explicitly for dev runs only.
+    runtimeOnly "org.xerial:sqlite-jdbc:3.49.1.0"
 }
 
 processResources {
