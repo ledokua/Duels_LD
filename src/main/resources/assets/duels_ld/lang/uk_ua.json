@@ -40,6 +40,10 @@
   "duels_ld.duel.loss_elo": "Ви програли дуель! Elo %s",
   "duels_ld.duel.win": "Ви перемогли в дуелі!",
   "duels_ld.duel.loss": "Ви програли дуель!",
+  "duels_ld.duel.waiting_reconnect": "Очікування перепідключення гравця...",
+  "duels_ld.duel.opponent_disconnected": "%s від'єднався — %s секунд на перепідключення.",
+  "duels_ld.duel.opponent_reconnected": "%s перепідключився.",
+  "duels_ld.duel.reconnected": "Ви повернулися до дуелі.",
 
   "duels_ld.matchmaking.cannot_queue_busy": "Ви не можете стати в чергу, коли зайняті або в бою.",
   "duels_ld.matchmaking.queued_1v1": "Ви в черзі на 1v1.",

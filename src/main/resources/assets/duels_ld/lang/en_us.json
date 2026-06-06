@@ -40,6 +40,10 @@
   "duels_ld.duel.loss_elo": "You lost the duel! Elo %s",
   "duels_ld.duel.win": "You won the duel!",
   "duels_ld.duel.loss": "You lost the duel!",
+  "duels_ld.duel.waiting_reconnect": "Waiting for player to reconnect...",
+  "duels_ld.duel.opponent_disconnected": "%s disconnected — %s seconds to reconnect.",
+  "duels_ld.duel.opponent_reconnected": "%s reconnected.",
+  "duels_ld.duel.reconnected": "You reconnected to your duel.",
 
   "duels_ld.matchmaking.cannot_queue_busy": "You cannot queue while busy or in a match.",
   "duels_ld.matchmaking.queued_1v1": "Queued for 1v1.",

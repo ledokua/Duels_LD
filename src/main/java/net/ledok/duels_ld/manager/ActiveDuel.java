@@ -30,6 +30,13 @@ public class ActiveDuel {
     private volatile EndRequest pendingEndRequest;
     private net.ledok.duels_ld.wager.Wager wager;
 
+    // Disconnect grace / timer pausing. disconnectedAt holds wall-clock ms of each offline player;
+    // pausedMs is the total time the duel was paused while someone was reconnecting (subtracted
+    // from elapsed); lastTickMs drives the per-tick delta used to accumulate pausedMs.
+    private final Map<UUID, Long> disconnectedAt = new ConcurrentHashMap<>();
+    private long pausedMs = 0L;
+    private long lastTickMs = 0L;
+
     public ActiveDuel(UUID player1, UUID player2, DuelSettings settings, String teamName, float p1Hp, float p2Hp) {
         this.player1 = player1;
         this.player2 = player2;
@@ -179,6 +186,33 @@ public class ActiveDuel {
 
     public void setLastHealth(UUID player, float health) {
         lastHealth.put(player, health);
+    }
+
+    public void markDisconnected(UUID player, long now) {
+        disconnectedAt.putIfAbsent(player, now);
+    }
+
+    public void clearDisconnected(UUID player) {
+        disconnectedAt.remove(player);
+    }
+
+    public Long getDisconnectedAt(UUID player) {
+        return disconnectedAt.get(player);
+    }
+
+    public long getPausedMs() {
+        return pausedMs;
+    }
+
+    public void addPausedMs(long delta) {
+        pausedMs += delta;
+    }
+
+    /** Returns ms since the previous tick (0 on the first call) and records the current time. */
+    public long tickDelta(long now) {
+        long delta = lastTickMs == 0L ? 0L : now - lastTickMs;
+        lastTickMs = now;
+        return delta;
     }
 
     public static final class EndRequest {

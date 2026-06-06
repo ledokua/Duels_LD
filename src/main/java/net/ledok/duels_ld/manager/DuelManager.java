@@ -6,7 +6,6 @@ import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
-import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.ledok.duels_ld.DuelsLdMod;
 import net.minecraft.ChatFormatting;
 import net.minecraft.server.level.ServerPlayer;
@@ -32,44 +31,20 @@ import java.util.concurrent.ConcurrentHashMap;
 public class DuelManager {
     private static final Map<UUID, ActiveDuel> activeDuels = new ConcurrentHashMap<>();
     private static final Map<UUID, ActiveTeamDuel> activeTeamDuels = new ConcurrentHashMap<>();
-    private static final Map<UUID, PlayerBackup> duelBackups = new ConcurrentHashMap<>();
     private static final String DUEL_TEAM_PREFIX = "duel_team_";
     private static final Map<UUID, Long> lastBoundsTeleport = new ConcurrentHashMap<>();
     private static final long BOUNDS_TELEPORT_COOLDOWN_MS = 2000;
     private static final double COUNTDOWN_FREEZE_THRESHOLD_SQR = 0.25;
     private static final double SPECTATOR_LEASH_RADIUS = 8.0;
+    // How long a disconnected player has to reconnect before they forfeit the duel. While anyone
+    // is within this window the duel timer is paused.
+    private static final long RECONNECT_GRACE_MS = 60_000L;
 
     public static void init() {
         ServerTickEvents.END_SERVER_TICK.register(DuelManager::onServerTick);
 
-        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-            UUID playerId = handler.getPlayer().getUUID();
-            if (!duelBackups.containsKey(playerId)) {
-                return;
-            }
-            // Defer to the next server-thread task: the JOIN event fires before the player is
-            // fully registered in the destination world's chunk-tracking (DistanceManager/ChunkMap).
-            // Doing a cross-dimension teleport here corrupts that state and leaves a ghost entity
-            // ("Force-added player with duplicate UUID" on the next reconnect).
-            server.execute(() -> {
-                ServerPlayer player = server.getPlayerList().getPlayer(playerId);
-                if (player == null) {
-                    return;
-                }
-                ActiveTeamDuel teamDuel = activeTeamDuels.get(playerId);
-                if (teamDuel != null) {
-                    if (teamDuel.isEliminated(playerId)) {
-                        player.setGameMode(GameType.SPECTATOR);
-                    }
-                    return;
-                }
-                if (!activeDuels.containsKey(playerId)) {
-                    restorePlayerFromBackup(player);
-                    player.sendSystemMessage(Component.translatable("duels_ld.duel.restore_gamemode").withStyle(ChatFormatting.YELLOW));
-                }
-            });
-        });
-        
+        DuelConnectionListener.register();
+
         AttackEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
             if (player instanceof ServerPlayer serverPlayer && entity instanceof ServerPlayer targetPlayer) {
                 ActiveTeamDuel attackerTeamDuel = getTeamDuel(serverPlayer);
@@ -325,9 +300,10 @@ public class DuelManager {
         scoreboard.addPlayerToTeam(player1.getScoreboardName(), team1);
         scoreboard.addPlayerToTeam(player2.getScoreboardName(), team2);
         
-        duelBackups.putIfAbsent(player1.getUUID(), new PlayerBackup(player1.gameMode.getGameModeForPlayer(), player1.position(), player1.level().dimension()));
-        duelBackups.putIfAbsent(player2.getUUID(), new PlayerBackup(player2.gameMode.getGameModeForPlayer(), player2.position(), player2.level().dimension()));
-        
+        DuelBackupStore backupStore = DuelBackupStore.get(player1.server);
+        backupStore.putIfAbsent(player1.getUUID(), PlayerBackup.capture(player1));
+        backupStore.putIfAbsent(player2.getUUID(), PlayerBackup.capture(player2));
+
         player1.setGameMode(GameType.ADVENTURE);
         player2.setGameMode(GameType.ADVENTURE);
 
@@ -361,8 +337,9 @@ public class DuelManager {
 
     public static void startMatchmakingDuel(ServerPlayer player1, ServerPlayer player2, DuelSettings settings, ArenaManager.Arena arena, Vec3 spawn1, Vec3 spawn2) {
         if (arena != null) {
-            duelBackups.put(player1.getUUID(), new PlayerBackup(player1.gameMode.getGameModeForPlayer(), player1.position(), player1.level().dimension()));
-            duelBackups.put(player2.getUUID(), new PlayerBackup(player2.gameMode.getGameModeForPlayer(), player2.position(), player2.level().dimension()));
+            DuelBackupStore backupStore = DuelBackupStore.get(player1.server);
+            backupStore.put(player1.getUUID(), PlayerBackup.capture(player1));
+            backupStore.put(player2.getUUID(), PlayerBackup.capture(player2));
 
             ServerLevel level = player1.server.getLevel(arena.getDimensionKey());
             if (level != null) {
@@ -391,10 +368,11 @@ public class DuelManager {
 
     public static void startMatchmakingDuel2v2(MinecraftServer server, ServerPlayer p1, ServerPlayer p2, ServerPlayer p3, ServerPlayer p4,
                                                 DuelSettings settings, ArenaManager.Arena arena, Vec3 t1a, Vec3 t1b, Vec3 t2a, Vec3 t2b) {
-        duelBackups.putIfAbsent(p1.getUUID(), new PlayerBackup(p1.gameMode.getGameModeForPlayer(), p1.position(), p1.level().dimension()));
-        duelBackups.putIfAbsent(p2.getUUID(), new PlayerBackup(p2.gameMode.getGameModeForPlayer(), p2.position(), p2.level().dimension()));
-        duelBackups.putIfAbsent(p3.getUUID(), new PlayerBackup(p3.gameMode.getGameModeForPlayer(), p3.position(), p3.level().dimension()));
-        duelBackups.putIfAbsent(p4.getUUID(), new PlayerBackup(p4.gameMode.getGameModeForPlayer(), p4.position(), p4.level().dimension()));
+        DuelBackupStore backupStore = DuelBackupStore.get(server);
+        backupStore.putIfAbsent(p1.getUUID(), PlayerBackup.capture(p1));
+        backupStore.putIfAbsent(p2.getUUID(), PlayerBackup.capture(p2));
+        backupStore.putIfAbsent(p3.getUUID(), PlayerBackup.capture(p3));
+        backupStore.putIfAbsent(p4.getUUID(), PlayerBackup.capture(p4));
 
         if (arena != null) {
             ServerLevel level = server.getLevel(arena.getDimensionKey());
@@ -515,17 +493,31 @@ public class DuelManager {
             
             ServerPlayer p1 = server.getPlayerList().getPlayer(duel.getPlayer1());
             ServerPlayer p2 = server.getPlayerList().getPlayer(duel.getPlayer2());
-            
-            if (p1 == null && p2 == null) {
+
+            long tickDelta = duel.tickDelta(currentTime);
+
+            // Disconnect grace: a player only forfeits once their reconnect window has expired.
+            boolean p1Forfeit = p1 == null && graceExpired(duel, duel.getPlayer1(), currentTime);
+            boolean p2Forfeit = p2 == null && graceExpired(duel, duel.getPlayer2(), currentTime);
+            if (p1Forfeit && p2Forfeit) {
                 endDuel(server, duel, true, null);
                 continue;
             }
-            if (p1 == null) {
+            if (p1Forfeit) {
                 endDuel(server, duel, false, duel.getPlayer2());
                 continue;
             }
-            if (p2 == null) {
+            if (p2Forfeit) {
                 endDuel(server, duel, false, duel.getPlayer1());
+                continue;
+            }
+            // Someone is offline but still within grace: pause the duel (freeze the timer) and wait.
+            if (p1 == null || p2 == null) {
+                if (!duel.isCountdown()) {
+                    duel.addPausedMs(tickDelta);
+                }
+                duel.getBossBar().setName(Component.translatable("duels_ld.duel.waiting_reconnect"));
+                duel.getBossBar().setColor(BossEvent.BossBarColor.YELLOW);
                 continue;
             }
 
@@ -561,9 +553,9 @@ public class DuelManager {
                     }
                 }
             } else {
-                long elapsed = (currentTime - duel.getStartTime()) / 1000;
+                long elapsed = (currentTime - duel.getStartTime() - duel.getPausedMs()) / 1000;
                 long remaining = duel.getSettings().getDurationSeconds() - elapsed;
-                
+
                 if (remaining <= 0) {
                     UUID winnerByPoints = pickWinnerByPoints(duel);
                     if (winnerByPoints == null) {
@@ -798,15 +790,123 @@ public class DuelManager {
         }
     }
     
+    /** True once the player's reconnect window has elapsed. Starts the window if not yet tracked. */
+    private static boolean graceExpired(ActiveDuel duel, UUID id, long now) {
+        Long since = duel.getDisconnectedAt(id);
+        if (since == null) {
+            duel.markDisconnected(id, now);
+            return false;
+        }
+        return now - since >= RECONNECT_GRACE_MS;
+    }
+
+    private static boolean graceExpired(ActiveTeamDuel duel, UUID id, long now) {
+        Long since = duel.getDisconnectedAt(id);
+        if (since == null) {
+            duel.markDisconnected(id, now);
+            return false;
+        }
+        return now - since >= RECONNECT_GRACE_MS;
+    }
+
+    /** Marks a mid-duel disconnect so the tick loop pauses instead of forfeiting immediately. */
+    public static void handlePlayerDisconnect(MinecraftServer server, ServerPlayer player) {
+        if (player == null) {
+            return;
+        }
+        UUID id = player.getUUID();
+        long now = System.currentTimeMillis();
+        long graceSeconds = RECONNECT_GRACE_MS / 1000;
+        String name = player.getName().getString();
+
+        ActiveDuel duel = activeDuels.get(id);
+        if (duel != null) {
+            duel.markDisconnected(id, now);
+            notifyOthers(server, List.of(duel.getPlayer1(), duel.getPlayer2()), id,
+                Component.translatable("duels_ld.duel.opponent_disconnected", name, graceSeconds).withStyle(ChatFormatting.YELLOW));
+            return;
+        }
+
+        ActiveTeamDuel teamDuel = activeTeamDuels.get(id);
+        if (teamDuel != null && !teamDuel.isEliminated(id)) {
+            teamDuel.markDisconnected(id, now);
+            notifyOthers(server, teamDuel.allPlayers(), id,
+                Component.translatable("duels_ld.duel.opponent_disconnected", name, graceSeconds).withStyle(ChatFormatting.YELLOW));
+        }
+    }
+
+    /**
+     * Handles a login for a player who may be tied to a duel. Must run after the player is fully
+     * placed in the world (the caller defers this off the JOIN event). Either resumes a still-active
+     * duel, re-applies spectator for an eliminated team member, or restores the pre-duel backup.
+     */
+    public static void handlePlayerReconnect(MinecraftServer server, ServerPlayer player) {
+        UUID id = player.getUUID();
+
+        ActiveDuel duel = activeDuels.get(id);
+        if (duel != null) {
+            duel.clearDisconnected(id);
+            resumeIntoArena(player, duel.getSpawnPosition(id), duel.getFreezePosition(id), duel.getBossBar(), duel.isCountdown());
+            notifyOthers(server, List.of(duel.getPlayer1(), duel.getPlayer2()), id,
+                Component.translatable("duels_ld.duel.opponent_reconnected", player.getName().getString()).withStyle(ChatFormatting.GREEN));
+            return;
+        }
+
+        ActiveTeamDuel teamDuel = activeTeamDuels.get(id);
+        if (teamDuel != null) {
+            if (teamDuel.isEliminated(id)) {
+                player.setGameMode(GameType.SPECTATOR);
+            } else {
+                teamDuel.clearDisconnected(id);
+                resumeIntoArena(player, teamDuel.getSpawnPosition(id), teamDuel.getFreezePosition(id), teamDuel.getBossBar(), teamDuel.isCountdown());
+                notifyOthers(server, teamDuel.allPlayers(), id,
+                    Component.translatable("duels_ld.duel.opponent_reconnected", player.getName().getString()).withStyle(ChatFormatting.GREEN));
+            }
+            return;
+        }
+
+        // No active duel: it ended while the player was away (or there was none). Restore the
+        // pre-duel state from the persisted backup if one is recorded.
+        if (DuelBackupStore.get(server).contains(id)) {
+            restorePlayerFromBackup(player);
+            player.sendSystemMessage(Component.translatable("duels_ld.duel.restore_gamemode").withStyle(ChatFormatting.YELLOW));
+        }
+    }
+
+    private static void resumeIntoArena(ServerPlayer player, Vec3 spawn, Vec3 freeze,
+                                        net.minecraft.server.level.ServerBossEvent bossBar, boolean countdown) {
+        player.setGameMode(GameType.ADVENTURE);
+        Vec3 pos = spawn != null ? spawn : freeze;
+        if (pos != null) {
+            // Same-dimension teleport: the player logs back into the arena dimension they left.
+            player.teleportTo(pos.x, pos.y, pos.z);
+        }
+        bossBar.addPlayer(player);
+        bossBar.setColor(countdown ? BossEvent.BossBarColor.RED : BossEvent.BossBarColor.BLUE);
+        player.sendSystemMessage(Component.translatable("duels_ld.duel.reconnected").withStyle(ChatFormatting.GREEN));
+    }
+
+    private static void notifyOthers(MinecraftServer server, Collection<UUID> participants, UUID exclude, Component message) {
+        for (UUID other : participants) {
+            if (other.equals(exclude)) {
+                continue;
+            }
+            ServerPlayer recipient = server.getPlayerList().getPlayer(other);
+            if (recipient != null) {
+                recipient.sendSystemMessage(message);
+            }
+        }
+    }
+
     private static void restorePlayer(ServerPlayer player, boolean shouldTeleportFromBackup) {
         if (player == null) return;
 
-        PlayerBackup backup = duelBackups.remove(player.getUUID());
+        PlayerBackup backup = DuelBackupStore.get(player.server).take(player.getUUID());
         if (backup != null) {
-            player.setGameMode(backup.getGameMode());
-            ServerLevel level = player.server.getLevel(backup.getDimension());
+            player.setGameMode(backup.gameMode());
+            ServerLevel level = player.server.getLevel(backup.dimension());
             if (shouldTeleportFromBackup && level != null) {
-                player.teleportTo(level, backup.getPosition().x, backup.getPosition().y, backup.getPosition().z, player.getYRot(), player.getXRot());
+                player.teleportTo(level, backup.position().x, backup.position().y, backup.position().z, backup.yaw(), backup.pitch());
             }
         }
     }
@@ -816,20 +916,20 @@ public class DuelManager {
     }
 
     private static void restorePlayerFromBackup(ServerPlayer player) {
-        PlayerBackup backup = duelBackups.remove(player.getUUID());
+        PlayerBackup backup = DuelBackupStore.get(player.server).take(player.getUUID());
         if (backup != null) {
-            player.setGameMode(backup.getGameMode());
-            ServerLevel level = player.server.getLevel(backup.getDimension());
+            player.setGameMode(backup.gameMode());
+            ServerLevel level = player.server.getLevel(backup.dimension());
             if (level != null) {
                 // Skip the cross-dimension teleport when the player is already in the backup's
                 // dimension (e.g. they logged back in there) to avoid an unnecessary world change.
-                if (player.level().dimension().equals(backup.getDimension())) {
-                    player.teleportTo(backup.getPosition().x, backup.getPosition().y, backup.getPosition().z);
+                if (player.level().dimension().equals(backup.dimension())) {
+                    player.teleportTo(backup.position().x, backup.position().y, backup.position().z);
                 } else {
-                    player.teleportTo(level, backup.getPosition().x, backup.getPosition().y, backup.getPosition().z, player.getYRot(), player.getXRot());
+                    player.teleportTo(level, backup.position().x, backup.position().y, backup.position().z, backup.yaw(), backup.pitch());
                 }
             } else {
-                player.teleportTo(backup.getPosition().x, backup.getPosition().y, backup.getPosition().z);
+                player.teleportTo(backup.position().x, backup.position().y, backup.position().z);
             }
         }
     }
@@ -911,6 +1011,35 @@ public class DuelManager {
                 continue;
             }
 
+            long tickDelta = duel.tickDelta(currentTime);
+
+            // Disconnect grace: eliminate only players whose reconnect window has expired; pause
+            // the duel while any non-eliminated player is still within grace.
+            boolean paused = false;
+            for (UUID playerId : duel.allPlayers()) {
+                if (duel.isEliminated(playerId)) {
+                    continue;
+                }
+                if (server.getPlayerList().getPlayer(playerId) == null) {
+                    if (graceExpired(duel, playerId, currentTime)) {
+                        handleTeamPlayerDeath(server, duel, playerId);
+                    } else {
+                        paused = true;
+                    }
+                }
+            }
+            if (!isTeamDuelActive(duel)) {
+                continue;
+            }
+            if (paused) {
+                if (!duel.isCountdown()) {
+                    duel.addPausedMs(tickDelta);
+                }
+                duel.getBossBar().setName(Component.translatable("duels_ld.duel.waiting_reconnect"));
+                duel.getBossBar().setColor(BossEvent.BossBarColor.YELLOW);
+                continue;
+            }
+
             if (duel.isCountdown()) {
                 for (UUID playerId : duel.allPlayers()) {
                     ServerPlayer player = server.getPlayerList().getPlayer(playerId);
@@ -943,20 +1072,7 @@ public class DuelManager {
                     }
                 }
             } else {
-                for (UUID playerId : duel.allPlayers()) {
-                    if (duel.isEliminated(playerId)) {
-                        continue;
-                    }
-                    ServerPlayer player = server.getPlayerList().getPlayer(playerId);
-                    if (player == null) {
-                        handleTeamPlayerDeath(server, duel, playerId);
-                    }
-                }
-                if (!isTeamDuelActive(duel)) {
-                    continue;
-                }
-
-                long elapsed = (currentTime - duel.getStartTime()) / 1000;
+                long elapsed = (currentTime - duel.getStartTime() - duel.getPausedMs()) / 1000;
                 long remaining = duel.getSettings().getDurationSeconds() - elapsed;
                 if (remaining <= 0) {
                     int winningTeam = pickWinningTeamByPoints(duel);

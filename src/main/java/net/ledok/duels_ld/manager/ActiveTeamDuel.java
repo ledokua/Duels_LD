@@ -33,6 +33,11 @@ public class ActiveTeamDuel {
     private boolean matchmaking;
     private volatile EndRequest pendingEndRequest;
 
+    // Disconnect grace / timer pausing — see ActiveDuel for the same fields' semantics.
+    private final Map<UUID, Long> disconnectedAt = new ConcurrentHashMap<>();
+    private long pausedMs = 0L;
+    private long lastTickMs = 0L;
+
     public ActiveTeamDuel(List<UUID> team1, List<UUID> team2, DuelSettings settings, String teamNameBase,
                           Map<UUID, Float> startHealth) {
         this.team1 = new ArrayList<>(team1);
@@ -161,6 +166,33 @@ public class ActiveTeamDuel {
 
     public void setLastHealth(UUID player, float health) {
         lastHealth.put(player, health);
+    }
+
+    public void markDisconnected(UUID player, long now) {
+        disconnectedAt.putIfAbsent(player, now);
+    }
+
+    public void clearDisconnected(UUID player) {
+        disconnectedAt.remove(player);
+    }
+
+    public Long getDisconnectedAt(UUID player) {
+        return disconnectedAt.get(player);
+    }
+
+    public long getPausedMs() {
+        return pausedMs;
+    }
+
+    public void addPausedMs(long delta) {
+        pausedMs += delta;
+    }
+
+    /** Returns ms since the previous tick (0 on the first call) and records the current time. */
+    public long tickDelta(long now) {
+        long delta = lastTickMs == 0L ? 0L : now - lastTickMs;
+        lastTickMs = now;
+        return delta;
     }
 
     public void setSpawnPosition(UUID player, Vec3 pos) {
