@@ -225,7 +225,9 @@ public class MatchmakingScreen extends BaseOwoScreen<FlowLayout> {
     }
 
     private FlowLayout buildModeCard(String modeKey, boolean queued, LabelComponent valueLabel, int elo, long queuedAt) {
-        FlowLayout card = Containers.verticalFlow(Sizing.expand(), Sizing.content());
+        // fill(48) (not expand): owo gives a single expand child all the space, so two side-by-side
+        // expand columns collapse to one. Explicit half-widths keep both columns visible.
+        FlowLayout card = Containers.verticalFlow(Sizing.fill(48), Sizing.content());
         card.surface(Surface.flat(PANEL_2).and(Surface.outline(queued ? ACCENT_DARK : HAIRLINE)));
         card.padding(Insets.of(8));
         card.gap(3);
@@ -253,7 +255,7 @@ public class MatchmakingScreen extends BaseOwoScreen<FlowLayout> {
         ButtonComponent button = queued
             ? styledButton(Component.translatable(labelKey), DANGER_DARK, DANGER, DANGER, action)
             : styledButton(Component.translatable(labelKey), ACCENT_DARK, ACCENT, ACCENT, action);
-        button.horizontalSizing(Sizing.expand());
+        button.horizontalSizing(Sizing.fill(48)); // half-width; see buildModeCard for why not expand()
         return button;
     }
 
