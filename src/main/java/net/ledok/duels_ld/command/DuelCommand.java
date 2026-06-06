@@ -50,6 +50,9 @@ public class DuelCommand {
             .then(Commands.literal("admingui")
                 .requires(source -> source.hasPermission(2))
                 .executes(DuelCommand::openAdminGui))
+            .then(Commands.literal("reload")
+                .requires(source -> source.hasPermission(2))
+                .executes(DuelCommand::reloadConfig))
             .then(Commands.literal("party")
                 .then(Commands.literal("create")
                     .executes(DuelCommand::partyCreate))
@@ -193,6 +196,16 @@ public class DuelCommand {
             config.weights.killBonus
         ));
         return 1;
+    }
+
+    private static int reloadConfig(CommandContext<CommandSourceStack> context) {
+        boolean ok = MatchmakingConfigManager.reload();
+        if (ok) {
+            context.getSource().sendSuccess(() -> Component.translatable("duels_ld.command.config_reloaded").withStyle(ChatFormatting.GREEN), true);
+        } else {
+            context.getSource().sendFailure(Component.translatable("duels_ld.command.config_reload_failed"));
+        }
+        return ok ? 1 : 0;
     }
 
     private static int partyCreate(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {

@@ -58,6 +58,8 @@
   "duels_ld.command.stats.wins": "Wins: %s",
   "duels_ld.command.stats.losses": "Losses: %s",
   "duels_ld.command.stats.draws": "Draws: %s",
+  "duels_ld.command.config_reloaded": "Duels config reloaded.",
+  "duels_ld.command.config_reload_failed": "No config file to reload.",
   "duels_ld.command.unknown_mode": "Unknown mode. Use 1v1 or 2v2.",
   "duels_ld.command.leaderboard.none": "No ratings yet for %s.",
   "duels_ld.command.leaderboard.header": "--- %s Elo Top 10 ---",

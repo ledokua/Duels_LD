@@ -58,6 +58,8 @@
   "duels_ld.command.stats.wins": "Перемоги: %s",
   "duels_ld.command.stats.losses": "Поразки: %s",
   "duels_ld.command.stats.draws": "Нічиї: %s",
+  "duels_ld.command.config_reloaded": "Конфіг дуелей перезавантажено.",
+  "duels_ld.command.config_reload_failed": "Немає файлу конфігу для перезавантаження.",
   "duels_ld.command.unknown_mode": "Невідомий режим. Використовуйте 1v1 або 2v2.",
   "duels_ld.command.leaderboard.none": "Поки немає рейтингів для %s.",
   "duels_ld.command.leaderboard.header": "--- Топ 10 Elo %s ---",

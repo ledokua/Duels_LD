@@ -42,6 +42,15 @@ public class MatchmakingConfigManager {
         saveConfig();
     }
 
+    /** Re-reads the config file from disk. Returns false if no file exists yet. */
+    public static boolean reload() {
+        if (configFile == null || !configFile.exists()) {
+            return false;
+        }
+        loadConfig();
+        return true;
+    }
+
     private static void loadConfig() {
         if (configFile == null || !configFile.exists()) {
             saveConfig();
