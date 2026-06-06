@@ -37,6 +37,18 @@ public class DuelsLdMod implements ModInitializer {
     public void onInitialize() {
         net.ledok.duels_ld.registry.ItemRegistry.initialize();
 
+        // All of the mod's SavedData files live under <world>/data/duels_ld/; Minecraft won't
+        // create that subfolder for writes, so ensure it exists before any save.
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTING.register(server -> {
+            try {
+                java.nio.file.Files.createDirectories(server
+                    .getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
+                    .resolve("data").resolve(MOD_ID));
+            } catch (java.io.IOException e) {
+                LOGGER.error("Failed to create SavedData directory.", e);
+            }
+        });
+
         PayloadTypeRegistry.playC2S().register(JoinQueuePayload.TYPE, JoinQueuePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(LeaveQueuePayload.TYPE, LeaveQueuePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(UpdateMatchmakingSettingsPayload.TYPE, UpdateMatchmakingSettingsPayload.CODEC);

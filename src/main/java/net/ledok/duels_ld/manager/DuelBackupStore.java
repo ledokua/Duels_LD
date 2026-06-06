@@ -23,7 +23,7 @@ import java.util.UUID;
  * of being stranded in the arena/PvP dimension.
  */
 public class DuelBackupStore extends SavedData {
-    private static final String DATA_ID = "duels_ld_backups";
+    private static final String DATA_ID = "duels_ld/backups";
     private static final String KEY_LIST = "backups";
     private static final String KEY_UUID = "uuid";
     private static final String KEY_BACKUP = "backup";

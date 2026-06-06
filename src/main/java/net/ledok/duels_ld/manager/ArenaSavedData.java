@@ -18,7 +18,7 @@ import java.util.List;
  * JSON once if this store is still empty.
  */
 public class ArenaSavedData extends SavedData {
-    private static final String DATA_ID = "duels_ld_arenas";
+    private static final String DATA_ID = "duels_ld/arenas";
     private static final String KEY = "arenas";
 
     private static final Factory<ArenaSavedData> FACTORY =

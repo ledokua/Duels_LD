@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /** Persists 1v1 and 2v2 MMR/Elo ratings as world {@link SavedData}. */
 public class MmrSavedData extends SavedData {
-    private static final String DATA_ID = "duels_ld_mmr";
+    private static final String DATA_ID = "duels_ld/mmr";
     private static final Codec<Map<UUID, Integer>> MAP_CODEC =
         Codec.unboundedMap(UUIDUtil.STRING_CODEC, Codec.INT);
 

@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /** Persists per-player win/loss/draw records as world {@link SavedData}. */
 public class StatsSavedData extends SavedData {
-    private static final String DATA_ID = "duels_ld_stats";
+    private static final String DATA_ID = "duels_ld/stats";
     private static final String KEY = "stats";
     private static final Codec<Map<UUID, PlayerStats>> CODEC =
         Codec.unboundedMap(UUIDUtil.STRING_CODEC, PlayerStats.CODEC);
