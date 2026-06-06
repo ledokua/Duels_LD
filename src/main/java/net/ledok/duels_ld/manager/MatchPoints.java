@@ -17,18 +17,6 @@ public class MatchPoints {
         defense += amount;
     }
 
-    public double getOffense() {
-        return offense;
-    }
-
-    public double getSupport() {
-        return support;
-    }
-
-    public double getDefense() {
-        return defense;
-    }
-
     public double getTotal() {
         return offense + support + defense;
     }

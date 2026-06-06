@@ -14,7 +14,6 @@ import net.ledok.duels_ld.network.SyncPartyPayload;
 import net.ledok.duels_ld.network.ArenaOverlayPayload;
 import net.ledok.duels_ld.network.ArenaListPayload;
 import net.minecraft.client.KeyMapping;
-import net.minecraft.client.Minecraft;
 import org.lwjgl.glfw.GLFW;
 
 public class DuelsLdModClient implements ClientModInitializer {

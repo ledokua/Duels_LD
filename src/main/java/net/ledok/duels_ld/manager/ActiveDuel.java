@@ -170,10 +170,6 @@ public class ActiveDuel {
         return points.computeIfAbsent(player, k -> new MatchPoints());
     }
 
-    public Map<UUID, MatchPoints> getAllPoints() {
-        return points;
-    }
-
     public float getLastHealth(UUID player) {
         return lastHealth.getOrDefault(player, 0.0f);
     }

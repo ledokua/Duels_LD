@@ -67,10 +67,6 @@ public class MMRManager {
         return new ConcurrentHashMap<>(mmr2v2);
     }
 
-    public static void applyResult1v1(UUID winner, UUID loser) {
-        applyResult1v1WithDelta(winner, loser);
-    }
-
     public static EloDelta1v1 applyResult1v1WithDelta(UUID winner, UUID loser) {
         int ra = getRating1v1(winner);
         int rb = getRating1v1(loser);
@@ -83,10 +79,6 @@ public class MMRManager {
         mmr1v1.put(loser, newRb);
         markDirty();
         return new EloDelta1v1(newRa - ra, newRb - rb);
-    }
-
-    public static void applyResult2v2(UUID winner1, UUID winner2, UUID loser1, UUID loser2) {
-        applyResult2v2WithDelta(winner1, winner2, loser1, loser2);
     }
 
     public static EloDelta2v2 applyResult2v2WithDelta(UUID winner1, UUID winner2, UUID loser1, UUID loser2) {

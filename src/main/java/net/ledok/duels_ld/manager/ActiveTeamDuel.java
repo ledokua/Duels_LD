@@ -72,10 +72,6 @@ public class ActiveTeamDuel {
         return players;
     }
 
-    public boolean isParticipant(UUID player) {
-        return team1.contains(player) || team2.contains(player);
-    }
-
     public int getTeam(UUID player) {
         if (team1.contains(player)) {
             return 1;
