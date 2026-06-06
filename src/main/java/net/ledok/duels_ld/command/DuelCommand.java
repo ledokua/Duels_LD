@@ -15,6 +15,7 @@ import net.ledok.duels_ld.wager.ChallengeManager;
 import net.ledok.duels_ld.wager.Wager;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.InteractionHand;
+import net.ledok.duels_ld.manager.ArenaWand;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -114,7 +115,11 @@ public class DuelCommand {
                 .then(Commands.literal("info")
                     .then(Commands.argument("name", StringArgumentType.word())
                         .suggests(DuelCommand::suggestArenaNames)
-                        .executes(DuelCommand::arenaInfo))))
+                        .executes(DuelCommand::arenaInfo)))
+                .then(Commands.literal("wand")
+                    .then(Commands.argument("name", StringArgumentType.word())
+                        .suggests(DuelCommand::suggestArenaNames)
+                        .executes(DuelCommand::arenaWand))))
             );
     }
 
@@ -308,6 +313,7 @@ public class DuelCommand {
         }
         ArenaManager.setPos1(name, player.blockPosition());
         context.getSource().sendSuccess(() -> Component.translatable("duels_ld.command.arena.pos1_set", name), true);
+        refreshOverlay(context.getSource(), name);
         return 1;
     }
 
@@ -325,6 +331,7 @@ public class DuelCommand {
         }
         ArenaManager.setPos2(name, player.blockPosition());
         context.getSource().sendSuccess(() -> Component.translatable("duels_ld.command.arena.pos2_set", name), true);
+        refreshOverlay(context.getSource(), name);
         return 1;
     }
 
@@ -354,6 +361,7 @@ public class DuelCommand {
         boolean ok = ArenaManager.addSpawn(name, team, pos, player.getYRot(), player.getXRot());
         if (ok) {
             context.getSource().sendSuccess(() -> Component.translatable("duels_ld.command.arena.spawn_added", name, team), true);
+            refreshOverlay(context.getSource(), name);
         } else {
             context.getSource().sendFailure(Component.translatable("duels_ld.command.arena.spawn_add_failed"));
         }
@@ -372,6 +380,7 @@ public class DuelCommand {
         boolean ok = ArenaManager.removeSpawn(name, team, pos);
         if (ok) {
             context.getSource().sendSuccess(() -> Component.translatable("duels_ld.command.arena.spawn_removed", name, team), true);
+            refreshOverlay(context.getSource(), name);
         } else {
             context.getSource().sendFailure(Component.translatable("duels_ld.command.arena.spawn_not_found"));
         }
@@ -415,6 +424,27 @@ public class DuelCommand {
             src.sendSuccess(() -> Component.translatable("duels_ld.command.arena.info_warn_outside", outside).withStyle(ChatFormatting.GOLD), false);
         }
         return 1;
+    }
+
+    private static int arenaWand(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        String name = StringArgumentType.getString(context, "name");
+        ServerPlayer player = context.getSource().getPlayerOrException();
+        ArenaManager.Arena arena = ArenaManager.getArena(name);
+        if (arena == null) {
+            context.getSource().sendFailure(Component.translatable("duels_ld.command.arena.not_found", name));
+            return 0;
+        }
+        ArenaWand.give(player, name);
+        ArenaWand.sendOverlay(player, name);
+        context.getSource().sendSuccess(() -> Component.translatable("duels_ld.command.arena.wand_given", name).withStyle(ChatFormatting.LIGHT_PURPLE), false);
+        return 1;
+    }
+
+    /** Pushes a fresh overlay snapshot to the editing player so the wand visualization stays current. */
+    private static void refreshOverlay(CommandSourceStack source, String name) {
+        if (source.getEntity() instanceof ServerPlayer player) {
+            ArenaWand.sendOverlay(player, name);
+        }
     }
 
     private static Component yn(boolean value) {

@@ -119,6 +119,8 @@
   "duels_ld.command.arena.info_line_ready": "Готова — 1v1: %s  2v2: %s",
   "duels_ld.command.arena.info_line_active": "Зайнята: %s",
   "duels_ld.command.arena.info_warn_outside": "⚠ %s точок появи поза межами",
+  "duels_ld.command.arena.wand_given": "Жезл арени для '%s' — ЛКМ задає точку 1, ПКМ — точку 2.",
+  "duels_ld.item.arena_wand": "Жезл арени дуелей: %s",
   "duels_ld.command.arena.list_entry": "- %s (T1: %s, T2: %s)",
 
   "duels_ld.screen.duel_requests.title": "Запити на дуель",

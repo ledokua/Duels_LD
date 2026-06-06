@@ -49,16 +49,18 @@ public class DuelsLdMod implements ModInitializer {
         PayloadTypeRegistry.playS2C().register(OpenLobbyScreenPayload.TYPE, OpenLobbyScreenPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(QueueStatePayload.TYPE, QueueStatePayload.CODEC);
         PayloadTypeRegistry.playS2C().register(SyncPartyPayload.TYPE, SyncPartyPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(net.ledok.duels_ld.network.ArenaOverlayPayload.TYPE, net.ledok.duels_ld.network.ArenaOverlayPayload.CODEC);
 
         StatsManager.init();
         MatchmakingConfigManager.init();
         ArenaManager.init();
         MMRManager.init();
         PartyManager.init();
-        
+
         DuelManager.init();
         MatchmakingManager.init();
         ChallengeManager.init();
+        net.ledok.duels_ld.manager.ArenaWand.register();
         if (FabricLoader.getInstance().isModLoaded("placeholder-api")) {
             LeaderboardPlaceholders.init();
         } else {

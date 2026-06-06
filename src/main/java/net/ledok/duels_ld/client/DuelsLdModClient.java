@@ -11,6 +11,7 @@ import net.ledok.duels_ld.network.QueueStatePayload;
 import net.ledok.duels_ld.network.SyncMatchmakingSettingsPayload;
 import net.ledok.duels_ld.network.SyncEloPayload;
 import net.ledok.duels_ld.network.SyncPartyPayload;
+import net.ledok.duels_ld.network.ArenaOverlayPayload;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.glfw.GLFW;
@@ -63,6 +64,12 @@ public class DuelsLdModClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(QueueStatePayload.TYPE, (payload, context) -> {
             context.client().execute(() -> MatchmakingScreen.applyQueueState(payload.in1v1(), payload.in2v2()));
         });
+
+        ClientPlayNetworking.registerGlobalReceiver(ArenaOverlayPayload.TYPE, (payload, context) -> {
+            context.client().execute(() -> ArenaOverlayRenderer.setSnapshot(payload));
+        });
+
+        ArenaOverlayRenderer.register();
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (OPEN_LOBBY_KEY.consumeClick()) {
