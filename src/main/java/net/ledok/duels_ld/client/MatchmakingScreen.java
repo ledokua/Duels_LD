@@ -55,8 +55,7 @@ public class MatchmakingScreen extends BaseOwoScreen<FlowLayout> {
     private static final int ACCENT_DARK = 0xFF6C4FB5;
     private static final int GOLD        = 0xFFF5C84B;
 
-    private static final int DROPDOWN_MAX_ROWS = 6;
-    private static final int DROPDOWN_MAX_HEIGHT = 120;
+    private static final int DROPDOWN_MAX_HEIGHT = 140;
 
     // ── Persistent client state (updated from network handlers) ────────────
     private static long queuedAt1v1 = -1;
@@ -76,6 +75,7 @@ public class MatchmakingScreen extends BaseOwoScreen<FlowLayout> {
 
     // Invite autocomplete
     private TextBoxComponent inviteField;
+    private FlowLayout inviteFieldRow;
     private FlowLayout inviteDropdown;
     private boolean inviteDropdownOpen = false;
 
@@ -174,8 +174,9 @@ public class MatchmakingScreen extends BaseOwoScreen<FlowLayout> {
         if (contentArea == null) {
             return;
         }
-        closeInviteDropdown();
+        inviteDropdownOpen = false;
         inviteField = null;
+        inviteFieldRow = null;
         inviteDropdown = null;
         contentArea.clearChildren();
         footerActions.clearChildren();
@@ -288,21 +289,22 @@ public class MatchmakingScreen extends BaseOwoScreen<FlowLayout> {
         panel.child(divider);
         panel.child(spacer(2));
 
-        // Invite row: searchable name field + Send
+        // Invite a player — searchable field with a chevron dropdown of online players, styled
+        // like the Arenas dungeon/raid invite control. Picking a name sends the invite directly.
         FlowLayout inviteRow = Containers.horizontalFlow(Sizing.fill(100), Sizing.content());
-        inviteRow.gap(4);
-        inviteRow.alignment(HorizontalAlignment.LEFT, VerticalAlignment.TOP);
+        inviteRow.gap(6);
+        inviteRow.alignment(HorizontalAlignment.LEFT, VerticalAlignment.CENTER);
+        inviteFieldRow = inviteRow;
 
-        FlowLayout fieldCol = Containers.verticalFlow(Sizing.expand(), Sizing.content());
-        FlowLayout fieldRow = Containers.horizontalFlow(Sizing.fill(100), Sizing.fixed(20));
-        fieldRow.surface(Surface.flat(PANEL).and(Surface.outline(HAIRLINE)));
-        fieldRow.alignment(HorizontalAlignment.LEFT, VerticalAlignment.CENTER);
-        FlowLayout fieldAccent = Containers.verticalFlow(Sizing.fixed(2), Sizing.fill(100));
+        FlowLayout fieldWrap = Containers.horizontalFlow(Sizing.expand(), Sizing.content());
+        fieldWrap.surface(Surface.flat(PANEL_2).and(Surface.outline(HAIRLINE)));
+        fieldWrap.alignment(HorizontalAlignment.LEFT, VerticalAlignment.CENTER);
+        FlowLayout fieldAccent = Containers.verticalFlow(Sizing.fixed(2), Sizing.fixed(20));
         fieldAccent.surface(Surface.flat(ACCENT));
-        fieldRow.child(fieldAccent);
+        fieldWrap.child(fieldAccent);
 
         inviteField = Components.textBox(Sizing.expand(), inviteDraft == null ? "" : inviteDraft);
-        inviteField.verticalSizing(Sizing.fixed(16));
+        inviteField.verticalSizing(Sizing.fixed(18));
         inviteField.onChanged().subscribe(v -> {
             inviteDraft = v;
             if (inviteDropdownOpen) {
@@ -313,19 +315,28 @@ public class MatchmakingScreen extends BaseOwoScreen<FlowLayout> {
             openInviteDropdown();
             return false;
         });
-        fieldRow.child(inviteField);
-        fieldCol.child(fieldRow);
+        fieldWrap.child(inviteField);
 
-        inviteDropdown = Containers.verticalFlow(Sizing.fill(100), Sizing.content());
-        inviteDropdown.surface(Surface.BLANK);
-        fieldCol.child(inviteDropdown);
-        inviteRow.child(fieldCol);
+        ButtonComponent chevron = Components.button(Component.empty(), b -> toggleInviteDropdown());
+        chevron.sizing(Sizing.fixed(18), Sizing.fixed(20));
+        chevron.renderer((context, rendered, delta) -> {
+            String glyph = inviteDropdownOpen ? "▲" : "▼";
+            int tx = rendered.getX() + (rendered.getWidth() - this.font.width(glyph)) / 2;
+            int ty = rendered.getY() + (rendered.getHeight() - this.font.lineHeight) / 2 + 1;
+            context.drawString(this.font, glyph, tx, ty, INK_MID, false);
+        });
+        fieldWrap.child(chevron);
+        inviteRow.child(fieldWrap);
 
         ButtonComponent send = styledButton(
             Component.translatable("duels_ld.screen.matchmaking.send"), ACCENT_DARK, ACCENT, ACCENT, b -> sendInvite());
         send.sizing(Sizing.fixed(42), Sizing.fixed(20));
         inviteRow.child(send);
         panel.child(inviteRow);
+
+        inviteDropdown = Containers.verticalFlow(Sizing.fill(100), Sizing.content());
+        inviteDropdown.surface(Surface.BLANK);
+        panel.child(inviteDropdown);
 
         // Incoming invite
         if (incomingInvite != null) {
@@ -368,10 +379,17 @@ public class MatchmakingScreen extends BaseOwoScreen<FlowLayout> {
     }
 
     private void closeInviteDropdown() {
-        inviteDropdownOpen = false;
-        if (inviteDropdown != null) {
-            inviteDropdown.clearChildren();
-            inviteDropdown.surface(Surface.BLANK);
+        if (inviteDropdownOpen) {
+            inviteDropdownOpen = false;
+            refreshInviteDropdown();
+        }
+    }
+
+    private void toggleInviteDropdown() {
+        if (inviteDropdownOpen) {
+            closeInviteDropdown();
+        } else {
+            openInviteDropdown();
         }
     }
 
@@ -380,63 +398,125 @@ public class MatchmakingScreen extends BaseOwoScreen<FlowLayout> {
             return;
         }
         inviteDropdown.clearChildren();
-        List<String> candidates = inviteCandidates(inviteField != null ? inviteField.getValue() : "");
-        if (!inviteDropdownOpen || candidates.isEmpty()) {
+        if (!inviteDropdownOpen) {
             inviteDropdown.surface(Surface.BLANK);
             return;
         }
         inviteDropdown.surface(Surface.flat(PANEL_2).and(Surface.outline(HAIRLINE)));
-        FlowLayout list = Containers.verticalFlow(Sizing.fill(100), Sizing.content());
-        for (String name : candidates) {
-            list.child(inviteRow(name));
+
+        List<String> candidates = inviteCandidates(inviteField != null ? inviteField.getValue() : "");
+
+        FlowLayout header = Containers.horizontalFlow(Sizing.fill(100), Sizing.content());
+        header.surface(Surface.flat(ROW_BG));
+        header.padding(Insets.of(4, 4, 8, 8));
+        header.alignment(HorizontalAlignment.LEFT, VerticalAlignment.CENTER);
+        header.child(text(Component.translatable("duels_ld.screen.matchmaking.invite_header"), INK_DIM));
+        header.child(Containers.horizontalFlow(Sizing.expand(), Sizing.content()));
+        header.child(text(Component.translatable("duels_ld.screen.matchmaking.invite_available", candidates.size()), ACCENT));
+        inviteDropdown.child(header);
+        inviteDropdown.child(rowDivider(HAIRLINE_HI));
+
+        if (candidates.isEmpty()) {
+            FlowLayout empty = Containers.horizontalFlow(Sizing.fill(100), Sizing.content());
+            empty.padding(Insets.of(8));
+            empty.alignment(HorizontalAlignment.LEFT, VerticalAlignment.CENTER);
+            empty.child(text(Component.translatable("duels_ld.screen.matchmaking.invite_empty"), INK_DIM));
+            inviteDropdown.child(empty);
+            return;
         }
-        int rowsHeight = candidates.size() * 16;
+
+        FlowLayout list = Containers.verticalFlow(Sizing.fill(100), Sizing.content());
+        boolean first = true;
+        for (String name : candidates) {
+            if (!first) {
+                list.child(rowDivider(HAIRLINE));
+            }
+            list.child(inviteCandidateRow(name));
+            first = false;
+        }
+        int rowsHeight = candidates.size() * 22 + Math.max(0, candidates.size() - 1);
         int visible = Math.min(rowsHeight, DROPDOWN_MAX_HEIGHT);
         ScrollContainer<FlowLayout> scroll = Containers.verticalScroll(Sizing.fill(100), Sizing.fixed(visible), list);
         scroll.scrollbar(ScrollContainer.Scrollbar.vanillaFlat());
         inviteDropdown.child(scroll);
     }
 
-    private ButtonComponent inviteRow(String name) {
+    private ButtonComponent inviteCandidateRow(String name) {
         ButtonComponent row = Components.button(Component.empty(), b -> {
+            ClientPlayNetworking.send(new PartyInvitePayload(name));
+            inviteDraft = "";
             if (inviteField != null) {
-                inviteField.text(name);
+                inviteField.text("");
             }
-            inviteDraft = name;
             closeInviteDropdown();
         });
-        row.sizing(Sizing.fill(100), Sizing.fixed(16));
+        row.sizing(Sizing.fill(100), Sizing.fixed(22));
+        String nameText = "@" + name;
+        String status = Component.translatable("duels_ld.screen.matchmaking.invite_status_online").getString();
         row.renderer((context, rendered, delta) -> {
             int x1 = rendered.getX();
             int y1 = rendered.getY();
+            int w = rendered.getWidth();
+            int h = rendered.getHeight();
             boolean hover = rendered.isHoveredOrFocused();
-            context.fill(x1, y1, x1 + rendered.getWidth(), y1 + rendered.getHeight(), hover ? ROW_BG : PANEL_2);
+            context.fill(x1, y1, x1 + w, y1 + h, hover ? ROW_BG : PANEL_2);
             if (hover) {
-                context.fill(x1, y1, x1 + 2, y1 + rendered.getHeight(), ACCENT);
+                context.fill(x1, y1, x1 + 2, y1 + h, ACCENT);
             }
-            context.drawString(this.font, name, x1 + 6, y1 + (rendered.getHeight() - this.font.lineHeight) / 2 + 1, INK, false);
+            context.fill(x1 + 8, y1 + h / 2 - 4, x1 + 16, y1 + h / 2 + 4, GOOD); // online status square
+            context.drawString(this.font, nameText, x1 + 24, y1 + (h - this.font.lineHeight) / 2 + 1, INK, false);
+            int sw = this.font.width(status);
+            context.drawString(this.font, status, x1 + w - sw - 8, y1 + (h - this.font.lineHeight) / 2 + 1, GOOD, false);
         });
         return row;
     }
 
     private List<String> inviteCandidates(String filter) {
-        if (minecraft == null || minecraft.getConnection() == null || inviteField == null || !inviteField.isFocused()) {
+        if (minecraft == null || minecraft.getConnection() == null) {
             return List.of();
         }
         String needle = filter == null ? "" : filter.trim().toLowerCase(Locale.ROOT);
+        if (needle.startsWith("@")) {
+            needle = needle.substring(1);
+        }
         String self = minecraft.player != null ? minecraft.player.getGameProfile().getName() : null;
+        java.util.Set<String> members = new java.util.HashSet<>();
+        for (SyncPartyPayload.Member m : partyMembers) {
+            members.add(m.name().toLowerCase(Locale.ROOT));
+        }
         List<String> names = new ArrayList<>();
         for (var info : minecraft.getConnection().getOnlinePlayers()) {
             String name = info.getProfile().getName();
+            if (name == null) {
+                continue;
+            }
             if (self != null && name.equalsIgnoreCase(self)) {
                 continue;
             }
-            if (needle.isEmpty() || name.toLowerCase(Locale.ROOT).contains(needle)) {
-                names.add(name);
+            if (members.contains(name.toLowerCase(Locale.ROOT))) {
+                continue;
             }
+            if (!needle.isEmpty() && !name.toLowerCase(Locale.ROOT).contains(needle)) {
+                continue;
+            }
+            names.add(name);
         }
         names.sort(Comparator.naturalOrder());
-        return names.size() > DROPDOWN_MAX_ROWS ? names.subList(0, DROPDOWN_MAX_ROWS) : names;
+        return names;
+    }
+
+    private FlowLayout rowDivider(int color) {
+        FlowLayout divider = Containers.verticalFlow(Sizing.fill(100), Sizing.fixed(1));
+        divider.surface(Surface.flat(color));
+        return divider;
+    }
+
+    private boolean pointInside(io.wispforest.owo.ui.core.Component component, double mouseX, double mouseY) {
+        if (component == null) {
+            return false;
+        }
+        return mouseX >= component.x() && mouseX < component.x() + component.width()
+            && mouseY >= component.y() && mouseY < component.y() + component.height();
     }
 
     private void sendInvite() {
@@ -511,6 +591,17 @@ public class MatchmakingScreen extends BaseOwoScreen<FlowLayout> {
     private static String formatTimer(long startMs) {
         long s = startMs < 0 ? 0 : Math.max(0, (System.currentTimeMillis() - startMs) / 1000L);
         return String.format("%02d:%02d", s / 60, s % 60);
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        boolean handled = super.mouseClicked(mouseX, mouseY, button);
+        if (inviteDropdownOpen
+            && !pointInside(inviteFieldRow, mouseX, mouseY)
+            && !pointInside(inviteDropdown, mouseX, mouseY)) {
+            closeInviteDropdown();
+        }
+        return handled;
     }
 
     @Override

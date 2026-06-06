@@ -152,6 +152,10 @@
   "duels_ld.screen.matchmaking.elo_caption": "rating",
   "duels_ld.screen.matchmaking.status_idle": "Idle",
   "duels_ld.screen.matchmaking.status_searching": "Searching — %s",
+  "duels_ld.screen.matchmaking.invite_header": "Invite a player",
+  "duels_ld.screen.matchmaking.invite_available": "%s online",
+  "duels_ld.screen.matchmaking.invite_empty": "No players found",
+  "duels_ld.screen.matchmaking.invite_status_online": "online",
 
   "duels_ld.screen.matchmaking_admin.title": "Matchmaking Settings",
   "duels_ld.screen.matchmaking_admin.one_v_one_time_placeholder": "1v1 time",

@@ -152,6 +152,10 @@
   "duels_ld.screen.matchmaking.elo_caption": "рейтинг",
   "duels_ld.screen.matchmaking.status_idle": "Очікування",
   "duels_ld.screen.matchmaking.status_searching": "Пошук — %s",
+  "duels_ld.screen.matchmaking.invite_header": "Запросити гравця",
+  "duels_ld.screen.matchmaking.invite_available": "%s онлайн",
+  "duels_ld.screen.matchmaking.invite_empty": "Гравців не знайдено",
+  "duels_ld.screen.matchmaking.invite_status_online": "онлайн",
 
   "duels_ld.screen.matchmaking_admin.title": "Налаштування матчмейкінгу",
   "duels_ld.screen.matchmaking_admin.one_v_one_time_placeholder": "час 1v1",
