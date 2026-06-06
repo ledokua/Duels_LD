@@ -86,13 +86,14 @@ public class ArenaManager {
         save();
     }
 
-    public static boolean addSpawn(String name, int team, BlockPos pos) {
+    public static boolean addSpawn(String name, int team, BlockPos pos, float yaw, float pitch) {
         Arena arena = arenas.get(name);
         if (arena == null) return false;
+        SpawnPoint spawn = new SpawnPoint(pos, yaw, pitch);
         if (team == 1) {
-            arena.team1Spawns.add(pos);
+            arena.team1Spawns.add(spawn);
         } else if (team == 2) {
-            arena.team2Spawns.add(pos);
+            arena.team2Spawns.add(spawn);
         } else {
             return false;
         }
@@ -105,9 +106,9 @@ public class ArenaManager {
         if (arena == null) return false;
         boolean removed;
         if (team == 1) {
-            removed = arena.team1Spawns.remove(pos);
+            removed = arena.team1Spawns.removeIf(s -> s.pos().equals(pos));
         } else if (team == 2) {
-            removed = arena.team2Spawns.remove(pos);
+            removed = arena.team2Spawns.removeIf(s -> s.pos().equals(pos));
         } else {
             return false;
         }
@@ -119,6 +120,40 @@ public class ArenaManager {
 
     public static boolean isActive(String name) {
         return activeArenas.contains(name);
+    }
+
+    public static boolean hasBounds(Arena arena) {
+        return arena != null && arena.pos1 != null && arena.pos2 != null;
+    }
+
+    /** True when both teams have at least {@code teamSize} spawns (1 for 1v1, 2 for 2v2). */
+    public static boolean isReadyFor(Arena arena, int teamSize) {
+        if (arena == null) return false;
+        return arena.team1Spawns.size() >= teamSize && arena.team2Spawns.size() >= teamSize;
+    }
+
+    /** Count of spawn points that fall outside the arena's bounding box (0 if bounds unset). */
+    public static int spawnsOutsideBounds(Arena arena) {
+        if (!hasBounds(arena)) return 0;
+        int minX = Math.min(arena.pos1.getX(), arena.pos2.getX());
+        int maxX = Math.max(arena.pos1.getX(), arena.pos2.getX());
+        int minY = Math.min(arena.pos1.getY(), arena.pos2.getY());
+        int maxY = Math.max(arena.pos1.getY(), arena.pos2.getY());
+        int minZ = Math.min(arena.pos1.getZ(), arena.pos2.getZ());
+        int maxZ = Math.max(arena.pos1.getZ(), arena.pos2.getZ());
+        int count = 0;
+        for (SpawnPoint s : allSpawns(arena)) {
+            if (s.x < minX || s.x > maxX || s.y < minY || s.y > maxY || s.z < minZ || s.z > maxZ) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    public static List<SpawnPoint> allSpawns(Arena arena) {
+        List<SpawnPoint> all = new ArrayList<>(arena.team1Spawns);
+        all.addAll(arena.team2Spawns);
+        return all;
     }
 
     public static void markActive(String name) {
@@ -150,9 +185,9 @@ public class ArenaManager {
         return candidates.get(0);
     }
 
-    public static List<BlockPos> pickSpawns(Arena arena, int team, int count) {
+    public static List<SpawnPoint> pickSpawns(Arena arena, int team, int count) {
         if (arena == null) return List.of();
-        List<BlockPos> spawns = new ArrayList<>(team == 1 ? arena.team1Spawns : arena.team2Spawns);
+        List<SpawnPoint> spawns = new ArrayList<>(team == 1 ? arena.team1Spawns : arena.team2Spawns);
         if (spawns.size() < count) {
             return List.of();
         }
@@ -200,8 +235,8 @@ public class ArenaManager {
         public String dimensionId;
         public BlockPos pos1;
         public BlockPos pos2;
-        public List<BlockPos> team1Spawns = new ArrayList<>();
-        public List<BlockPos> team2Spawns = new ArrayList<>();
+        public List<SpawnPoint> team1Spawns = new ArrayList<>();
+        public List<SpawnPoint> team2Spawns = new ArrayList<>();
 
         public Arena() {}
 
@@ -216,6 +251,46 @@ public class ArenaManager {
                 id = ResourceLocation.fromNamespaceAndPath("minecraft", "overworld");
             }
             return ResourceKey.create(Registries.DIMENSION, id);
+        }
+    }
+
+    /**
+     * A team spawn: block position plus the facing (yaw/pitch) a dueler should look when teleported
+     * in. Old arena files stored bare BlockPos ({@code {x,y,z}}); Gson loads those here with
+     * yaw/pitch defaulting to 0, so existing arenas stay valid.
+     */
+    public static class SpawnPoint {
+        public int x;
+        public int y;
+        public int z;
+        public float yaw;
+        public float pitch;
+
+        public SpawnPoint() {}
+
+        public SpawnPoint(BlockPos pos, float yaw, float pitch) {
+            this.x = pos.getX();
+            this.y = pos.getY();
+            this.z = pos.getZ();
+            this.yaw = yaw;
+            this.pitch = pitch;
+        }
+
+        public BlockPos pos() {
+            return new BlockPos(x, y, z);
+        }
+
+        /** Standing position at the block (feet on the block top face). */
+        public net.minecraft.world.phys.Vec3 center() {
+            return new net.minecraft.world.phys.Vec3(x + 0.5, y, z + 0.5);
+        }
+
+        public float yaw() {
+            return yaw;
+        }
+
+        public float pitch() {
+            return pitch;
         }
     }
 

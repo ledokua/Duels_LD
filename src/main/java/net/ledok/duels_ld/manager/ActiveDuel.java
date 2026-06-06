@@ -146,12 +146,28 @@ public class ActiveDuel {
         this.wager = wager;
     }
 
+    private final Map<UUID, Float> spawnYaw = new ConcurrentHashMap<>();
+    private final Map<UUID, Float> spawnPitch = new ConcurrentHashMap<>();
+
     public void setSpawnPosition(UUID player, net.minecraft.world.phys.Vec3 pos) {
         spawnPositions.put(player, pos);
     }
 
     public net.minecraft.world.phys.Vec3 getSpawnPosition(UUID player) {
         return spawnPositions.get(player);
+    }
+
+    public void setSpawnFacing(UUID player, float yaw, float pitch) {
+        spawnYaw.put(player, yaw);
+        spawnPitch.put(player, pitch);
+    }
+
+    public float getSpawnYaw(UUID player) {
+        return spawnYaw.getOrDefault(player, 0.0f);
+    }
+
+    public float getSpawnPitch(UUID player) {
+        return spawnPitch.getOrDefault(player, 0.0f);
     }
 
     public void setFreezePosition(UUID player, net.minecraft.world.phys.Vec3 pos) {

@@ -335,7 +335,9 @@ public class DuelManager {
         }
     }
 
-    public static void startMatchmakingDuel(ServerPlayer player1, ServerPlayer player2, DuelSettings settings, ArenaManager.Arena arena, Vec3 spawn1, Vec3 spawn2) {
+    public static void startMatchmakingDuel(ServerPlayer player1, ServerPlayer player2, DuelSettings settings, ArenaManager.Arena arena, ArenaManager.SpawnPoint spawn1, ArenaManager.SpawnPoint spawn2) {
+        Vec3 pos1 = spawn1.center();
+        Vec3 pos2 = spawn2.center();
         if (arena != null) {
             DuelBackupStore backupStore = DuelBackupStore.get(player1.server);
             backupStore.put(player1.getUUID(), PlayerBackup.capture(player1));
@@ -343,8 +345,8 @@ public class DuelManager {
 
             ServerLevel level = player1.server.getLevel(arena.getDimensionKey());
             if (level != null) {
-                player1.teleportTo(level, spawn1.x, spawn1.y, spawn1.z, player1.getYRot(), player1.getXRot());
-                player2.teleportTo(level, spawn2.x, spawn2.y, spawn2.z, player2.getYRot(), player2.getXRot());
+                player1.teleportTo(level, pos1.x, pos1.y, pos1.z, spawn1.yaw(), spawn1.pitch());
+                player2.teleportTo(level, pos2.x, pos2.y, pos2.z, spawn2.yaw(), spawn2.pitch());
             }
         }
         startDuel(player1, player2, settings);
@@ -360,14 +362,17 @@ public class DuelManager {
                 team2.setPlayerPrefix(Component.translatable("duels_ld.arena.prefix", arena.name));
             }
             duel.setArenaName(arena.name);
-            duel.setSpawnPosition(player1.getUUID(), spawn1);
-            duel.setSpawnPosition(player2.getUUID(), spawn2);
+            duel.setSpawnPosition(player1.getUUID(), pos1);
+            duel.setSpawnPosition(player2.getUUID(), pos2);
+            duel.setSpawnFacing(player1.getUUID(), spawn1.yaw(), spawn1.pitch());
+            duel.setSpawnFacing(player2.getUUID(), spawn2.yaw(), spawn2.pitch());
             duel.setMatchmaking(true);
         }
     }
 
     public static void startMatchmakingDuel2v2(MinecraftServer server, ServerPlayer p1, ServerPlayer p2, ServerPlayer p3, ServerPlayer p4,
-                                                DuelSettings settings, ArenaManager.Arena arena, Vec3 t1a, Vec3 t1b, Vec3 t2a, Vec3 t2b) {
+                                                DuelSettings settings, ArenaManager.Arena arena,
+                                                ArenaManager.SpawnPoint t1a, ArenaManager.SpawnPoint t1b, ArenaManager.SpawnPoint t2a, ArenaManager.SpawnPoint t2b) {
         DuelBackupStore backupStore = DuelBackupStore.get(server);
         backupStore.putIfAbsent(p1.getUUID(), PlayerBackup.capture(p1));
         backupStore.putIfAbsent(p2.getUUID(), PlayerBackup.capture(p2));
@@ -377,10 +382,10 @@ public class DuelManager {
         if (arena != null) {
             ServerLevel level = server.getLevel(arena.getDimensionKey());
             if (level != null) {
-                p1.teleportTo(level, t1a.x, t1a.y, t1a.z, p1.getYRot(), p1.getXRot());
-                p2.teleportTo(level, t1b.x, t1b.y, t1b.z, p2.getYRot(), p2.getXRot());
-                p3.teleportTo(level, t2a.x, t2a.y, t2a.z, p3.getYRot(), p3.getXRot());
-                p4.teleportTo(level, t2b.x, t2b.y, t2b.z, p4.getYRot(), p4.getXRot());
+                teleportToSpawnPoint(level, p1, t1a);
+                teleportToSpawnPoint(level, p2, t1b);
+                teleportToSpawnPoint(level, p3, t2a);
+                teleportToSpawnPoint(level, p4, t2b);
             }
         }
 
@@ -466,10 +471,10 @@ public class DuelManager {
                 scoreboardTeam2.setPlayerPrefix(Component.translatable("duels_ld.arena.prefix", arena.name));
             }
             duel.setArenaName(arena.name);
-            duel.setSpawnPosition(p1.getUUID(), t1a);
-            duel.setSpawnPosition(p2.getUUID(), t1b);
-            duel.setSpawnPosition(p3.getUUID(), t2a);
-            duel.setSpawnPosition(p4.getUUID(), t2b);
+            storeTeamSpawn(duel, p1.getUUID(), t1a);
+            storeTeamSpawn(duel, p2.getUUID(), t1b);
+            storeTeamSpawn(duel, p3.getUUID(), t2a);
+            storeTeamSpawn(duel, p4.getUUID(), t2b);
             duel.setMatchmaking(true);
         }
 
@@ -846,7 +851,7 @@ public class DuelManager {
         ActiveDuel duel = activeDuels.get(id);
         if (duel != null) {
             duel.clearDisconnected(id);
-            resumeIntoArena(player, duel.getSpawnPosition(id), duel.getFreezePosition(id), duel.getBossBar(), duel.isCountdown());
+            resumeIntoArena(player, duel.getSpawnPosition(id), duel.getFreezePosition(id), duel.getSpawnYaw(id), duel.getSpawnPitch(id), duel.getBossBar(), duel.isCountdown());
             notifyOthers(server, List.of(duel.getPlayer1(), duel.getPlayer2()), id,
                 Component.translatable("duels_ld.duel.opponent_reconnected", player.getName().getString()).withStyle(ChatFormatting.GREEN));
             return;
@@ -858,7 +863,7 @@ public class DuelManager {
                 player.setGameMode(GameType.SPECTATOR);
             } else {
                 teamDuel.clearDisconnected(id);
-                resumeIntoArena(player, teamDuel.getSpawnPosition(id), teamDuel.getFreezePosition(id), teamDuel.getBossBar(), teamDuel.isCountdown());
+                resumeIntoArena(player, teamDuel.getSpawnPosition(id), teamDuel.getFreezePosition(id), teamDuel.getSpawnYaw(id), teamDuel.getSpawnPitch(id), teamDuel.getBossBar(), teamDuel.isCountdown());
                 notifyOthers(server, teamDuel.allPlayers(), id,
                     Component.translatable("duels_ld.duel.opponent_reconnected", player.getName().getString()).withStyle(ChatFormatting.GREEN));
             }
@@ -873,13 +878,13 @@ public class DuelManager {
         }
     }
 
-    private static void resumeIntoArena(ServerPlayer player, Vec3 spawn, Vec3 freeze,
+    private static void resumeIntoArena(ServerPlayer player, Vec3 spawn, Vec3 freeze, float yaw, float pitch,
                                         net.minecraft.server.level.ServerBossEvent bossBar, boolean countdown) {
         player.setGameMode(GameType.ADVENTURE);
         Vec3 pos = spawn != null ? spawn : freeze;
         if (pos != null) {
             // Same-dimension teleport: the player logs back into the arena dimension they left.
-            player.teleportTo(pos.x, pos.y, pos.z);
+            player.teleportTo(player.serverLevel(), pos.x, pos.y, pos.z, yaw, pitch);
         }
         bossBar.addPlayer(player);
         bossBar.setColor(countdown ? BossEvent.BossBarColor.RED : BossEvent.BossBarColor.BLUE);
@@ -1330,6 +1335,16 @@ public class DuelManager {
         teleportToSpawn(duel, arena, player);
     }
 
+    private static void teleportToSpawnPoint(ServerLevel level, ServerPlayer player, ArenaManager.SpawnPoint spawn) {
+        Vec3 pos = spawn.center();
+        player.teleportTo(level, pos.x, pos.y, pos.z, spawn.yaw(), spawn.pitch());
+    }
+
+    private static void storeTeamSpawn(ActiveTeamDuel duel, UUID id, ArenaManager.SpawnPoint spawn) {
+        duel.setSpawnPosition(id, spawn.center());
+        duel.setSpawnFacing(id, spawn.yaw(), spawn.pitch());
+    }
+
     private static void teleportToSpawn(ActiveDuel duel, ArenaManager.Arena arena, ServerPlayer player) {
         Vec3 spawn = duel.getSpawnPosition(player.getUUID());
         if (spawn == null) {
@@ -1337,7 +1352,7 @@ public class DuelManager {
         }
         ServerLevel level = player.server.getLevel(arena.getDimensionKey());
         if (level != null) {
-            player.teleportTo(level, spawn.x, spawn.y, spawn.z, player.getYRot(), player.getXRot());
+            player.teleportTo(level, spawn.x, spawn.y, spawn.z, duel.getSpawnYaw(player.getUUID()), duel.getSpawnPitch(player.getUUID()));
         }
     }
 
@@ -1348,7 +1363,7 @@ public class DuelManager {
         }
         ServerLevel level = player.server.getLevel(arena.getDimensionKey());
         if (level != null) {
-            player.teleportTo(level, spawn.x, spawn.y, spawn.z, player.getYRot(), player.getXRot());
+            player.teleportTo(level, spawn.x, spawn.y, spawn.z, duel.getSpawnYaw(player.getUUID()), duel.getSpawnPitch(player.getUUID()));
         }
     }
 }

@@ -195,12 +195,28 @@ public class ActiveTeamDuel {
         return delta;
     }
 
+    private final Map<UUID, Float> spawnYaw = new ConcurrentHashMap<>();
+    private final Map<UUID, Float> spawnPitch = new ConcurrentHashMap<>();
+
     public void setSpawnPosition(UUID player, Vec3 pos) {
         spawnPositions.put(player, pos);
     }
 
     public Vec3 getSpawnPosition(UUID player) {
         return spawnPositions.get(player);
+    }
+
+    public void setSpawnFacing(UUID player, float yaw, float pitch) {
+        spawnYaw.put(player, yaw);
+        spawnPitch.put(player, pitch);
+    }
+
+    public float getSpawnYaw(UUID player) {
+        return spawnYaw.getOrDefault(player, 0.0f);
+    }
+
+    public float getSpawnPitch(UUID player) {
+        return spawnPitch.getOrDefault(player, 0.0f);
     }
 
     public void setFreezePosition(UUID player, Vec3 pos) {

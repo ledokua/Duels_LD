@@ -260,8 +260,8 @@ public class MatchmakingManager {
             sendQueueState(p2);
             return;
         }
-        List<net.minecraft.core.BlockPos> t1 = ArenaManager.pickSpawns(arena, 1, 1);
-        List<net.minecraft.core.BlockPos> t2 = ArenaManager.pickSpawns(arena, 2, 1);
+        List<ArenaManager.SpawnPoint> t1 = ArenaManager.pickSpawns(arena, 1, 1);
+        List<ArenaManager.SpawnPoint> t2 = ArenaManager.pickSpawns(arena, 2, 1);
         if (t1.isEmpty() || t2.isEmpty()) {
             List<UUID> match = List.of(p1.getUUID(), p2.getUUID());
             pending1v1.add(match);
@@ -284,8 +284,8 @@ public class MatchmakingManager {
         settings.setWinHpPercentage(config.oneVOne.winHpPercentage);
         DuelManager.startMatchmakingDuel(p1, p2, settings,
             arena,
-            t1.get(0).getCenter(),
-            t2.get(0).getCenter()
+            t1.get(0),
+            t2.get(0)
         );
         sendQueueState(p1);
         sendQueueState(p2);
@@ -334,8 +334,8 @@ public class MatchmakingManager {
         if (arena == null) {
             return;
         }
-        List<net.minecraft.core.BlockPos> t1 = ArenaManager.pickSpawns(arena, 1, 1);
-        List<net.minecraft.core.BlockPos> t2 = ArenaManager.pickSpawns(arena, 2, 1);
+        List<ArenaManager.SpawnPoint> t1 = ArenaManager.pickSpawns(arena, 1, 1);
+        List<ArenaManager.SpawnPoint> t2 = ArenaManager.pickSpawns(arena, 2, 1);
         if (t1.isEmpty() || t2.isEmpty()) {
             return;
         }
@@ -348,8 +348,8 @@ public class MatchmakingManager {
         settings.setWinHpPercentage(config.oneVOne.winHpPercentage);
         DuelManager.startMatchmakingDuel(p1, p2, settings,
             arena,
-            t1.get(0).getCenter(),
-            t2.get(0).getCenter()
+            t1.get(0),
+            t2.get(0)
         );
         sendQueueState(p1);
         sendQueueState(p2);
@@ -379,8 +379,8 @@ public class MatchmakingManager {
         if (arena == null) {
             return;
         }
-        List<net.minecraft.core.BlockPos> t1 = ArenaManager.pickSpawns(arena, 1, 2);
-        List<net.minecraft.core.BlockPos> t2 = ArenaManager.pickSpawns(arena, 2, 2);
+        List<ArenaManager.SpawnPoint> t1 = ArenaManager.pickSpawns(arena, 1, 2);
+        List<ArenaManager.SpawnPoint> t2 = ArenaManager.pickSpawns(arena, 2, 2);
         if (t1.size() < 2 || t2.size() < 2) {
             return;
         }
@@ -393,10 +393,10 @@ public class MatchmakingManager {
         settings.setWinHpPercentage(config.twoVTwo.winHpPercentage);
         DuelManager.startMatchmakingDuel2v2(server, p1, p2, p3, p4, settings,
             arena,
-            t1.get(0).getCenter(),
-            t1.get(1).getCenter(),
-            t2.get(0).getCenter(),
-            t2.get(1).getCenter()
+            t1.get(0),
+            t1.get(1),
+            t2.get(0),
+            t2.get(1)
         );
         sendQueueState(p1);
         sendQueueState(p2);
@@ -575,8 +575,8 @@ public class MatchmakingManager {
             return true;
         }
 
-        List<net.minecraft.core.BlockPos> t1 = ArenaManager.pickSpawns(arena, 1, 2);
-        List<net.minecraft.core.BlockPos> t2 = ArenaManager.pickSpawns(arena, 2, 2);
+        List<ArenaManager.SpawnPoint> t1 = ArenaManager.pickSpawns(arena, 1, 2);
+        List<ArenaManager.SpawnPoint> t2 = ArenaManager.pickSpawns(arena, 2, 2);
         if (t1.size() < 2 || t2.size() < 2) {
             return false;
         }
@@ -588,10 +588,10 @@ public class MatchmakingManager {
         settings.setWinHpPercentage(config.twoVTwo.winHpPercentage);
         DuelManager.startMatchmakingDuel2v2(server, p1, p2, p3, p4, settings,
             arena,
-            t1.get(0).getCenter(),
-            t1.get(1).getCenter(),
-            t2.get(0).getCenter(),
-            t2.get(1).getCenter()
+            t1.get(0),
+            t1.get(1),
+            t2.get(0),
+            t2.get(1)
         );
         sendQueueState(p1);
         sendQueueState(p2);

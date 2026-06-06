@@ -15,6 +15,7 @@ import net.ledok.duels_ld.wager.ChallengeManager;
 import net.ledok.duels_ld.wager.Wager;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.EntityArgument;
@@ -99,6 +100,7 @@ public class DuelCommand {
                     .then(Commands.argument("name", StringArgumentType.word())
                         .suggests(DuelCommand::suggestArenaNames)
                         .then(Commands.argument("team", IntegerArgumentType.integer(1, 2))
+                            .executes(DuelCommand::arenaAddSpawnHere)
                             .then(Commands.argument("pos", BlockPosArgument.blockPos())
                                 .executes(DuelCommand::arenaAddSpawn)))))
                 .then(Commands.literal("remspawn")
@@ -108,7 +110,11 @@ public class DuelCommand {
                             .then(Commands.argument("pos", BlockPosArgument.blockPos())
                                 .executes(DuelCommand::arenaRemoveSpawn)))))
                 .then(Commands.literal("list")
-                    .executes(DuelCommand::arenaList)))
+                    .executes(DuelCommand::arenaList))
+                .then(Commands.literal("info")
+                    .then(Commands.argument("name", StringArgumentType.word())
+                        .suggests(DuelCommand::suggestArenaNames)
+                        .executes(DuelCommand::arenaInfo))))
             );
     }
 
@@ -322,10 +328,18 @@ public class DuelCommand {
         return 1;
     }
 
+    private static int arenaAddSpawnHere(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        ServerPlayer player = context.getSource().getPlayerOrException();
+        return doAddSpawn(context, player.blockPosition());
+    }
+
     private static int arenaAddSpawn(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        return doAddSpawn(context, BlockPosArgument.getLoadedBlockPos(context, "pos"));
+    }
+
+    private static int doAddSpawn(CommandContext<CommandSourceStack> context, BlockPos pos) throws CommandSyntaxException {
         String name = StringArgumentType.getString(context, "name");
         int team = IntegerArgumentType.getInteger(context, "team");
-        BlockPos pos = BlockPosArgument.getLoadedBlockPos(context, "pos");
         ServerPlayer player = context.getSource().getPlayerOrException();
         ArenaManager.Arena arena = ArenaManager.getArena(name);
         if (arena == null) {
@@ -336,7 +350,8 @@ public class DuelCommand {
             context.getSource().sendFailure(Component.translatable("duels_ld.command.arena.wrong_dimension_spawn"));
             return 0;
         }
-        boolean ok = ArenaManager.addSpawn(name, team, pos);
+        // Capture the admin's facing so duelers spawn looking the way the admin was looking.
+        boolean ok = ArenaManager.addSpawn(name, team, pos, player.getYRot(), player.getXRot());
         if (ok) {
             context.getSource().sendSuccess(() -> Component.translatable("duels_ld.command.arena.spawn_added", name, team), true);
         } else {
@@ -379,6 +394,33 @@ public class DuelCommand {
             ), false);
         }
         return 1;
+    }
+
+    private static int arenaInfo(CommandContext<CommandSourceStack> context) {
+        String name = StringArgumentType.getString(context, "name");
+        ArenaManager.Arena arena = ArenaManager.getArena(name);
+        if (arena == null) {
+            context.getSource().sendFailure(Component.translatable("duels_ld.command.arena.not_found", name));
+            return 0;
+        }
+        CommandSourceStack src = context.getSource();
+        src.sendSuccess(() -> Component.translatable("duels_ld.command.arena.info_header", name).withStyle(ChatFormatting.AQUA), false);
+        src.sendSuccess(() -> Component.translatable("duels_ld.command.arena.info_line_dim", arena.dimensionId), false);
+        src.sendSuccess(() -> Component.translatable("duels_ld.command.arena.info_line_bounds", yn(ArenaManager.hasBounds(arena))), false);
+        src.sendSuccess(() -> Component.translatable("duels_ld.command.arena.info_line_spawns", arena.team1Spawns.size(), arena.team2Spawns.size()), false);
+        src.sendSuccess(() -> Component.translatable("duels_ld.command.arena.info_line_ready", yn(ArenaManager.isReadyFor(arena, 1)), yn(ArenaManager.isReadyFor(arena, 2))), false);
+        src.sendSuccess(() -> Component.translatable("duels_ld.command.arena.info_line_active", yn(ArenaManager.isActive(name))), false);
+        int outside = ArenaManager.spawnsOutsideBounds(arena);
+        if (outside > 0) {
+            src.sendSuccess(() -> Component.translatable("duels_ld.command.arena.info_warn_outside", outside).withStyle(ChatFormatting.GOLD), false);
+        }
+        return 1;
+    }
+
+    private static Component yn(boolean value) {
+        return value
+            ? Component.literal("✓").withStyle(ChatFormatting.GREEN)
+            : Component.literal("✗").withStyle(ChatFormatting.RED);
     }
 
     private static CompletableFuture<Suggestions> suggestArenaNames(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {

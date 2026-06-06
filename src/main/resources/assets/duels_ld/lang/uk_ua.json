@@ -112,6 +112,13 @@
   "duels_ld.command.arena.spawn_not_found": "Спавн не знайдено.",
   "duels_ld.command.arena.none": "Немає визначених арен.",
   "duels_ld.command.arena.list_header": "Арени:",
+  "duels_ld.command.arena.info_header": "=== Арена %s ===",
+  "duels_ld.command.arena.info_line_dim": "Вимір: %s",
+  "duels_ld.command.arena.info_line_bounds": "Межі задано: %s",
+  "duels_ld.command.arena.info_line_spawns": "Точки появи — Команда 1: %s, Команда 2: %s",
+  "duels_ld.command.arena.info_line_ready": "Готова — 1v1: %s  2v2: %s",
+  "duels_ld.command.arena.info_line_active": "Зайнята: %s",
+  "duels_ld.command.arena.info_warn_outside": "⚠ %s точок появи поза межами",
   "duels_ld.command.arena.list_entry": "- %s (T1: %s, T2: %s)",
 
   "duels_ld.screen.duel_requests.title": "Запити на дуель",

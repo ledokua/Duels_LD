@@ -112,6 +112,13 @@
   "duels_ld.command.arena.spawn_not_found": "Spawn not found.",
   "duels_ld.command.arena.none": "No arenas defined.",
   "duels_ld.command.arena.list_header": "Arenas:",
+  "duels_ld.command.arena.info_header": "=== Arena %s ===",
+  "duels_ld.command.arena.info_line_dim": "Dimension: %s",
+  "duels_ld.command.arena.info_line_bounds": "Bounds set: %s",
+  "duels_ld.command.arena.info_line_spawns": "Spawns — Team 1: %s, Team 2: %s",
+  "duels_ld.command.arena.info_line_ready": "Ready — 1v1: %s  2v2: %s",
+  "duels_ld.command.arena.info_line_active": "In use: %s",
+  "duels_ld.command.arena.info_warn_outside": "⚠ %s spawn(s) lie outside the bounds",
   "duels_ld.command.arena.list_entry": "- %s (T1: %s, T2: %s)",
 
   "duels_ld.screen.duel_requests.title": "Duel Requests",
