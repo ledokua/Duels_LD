@@ -1,5 +1,6 @@
 package net.ledok.duels_ld.manager;
 
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
@@ -42,6 +43,7 @@ public class DuelManager {
 
     public static void init() {
         ServerTickEvents.END_SERVER_TICK.register(DuelManager::onServerTick);
+        ServerLifecycleEvents.SERVER_STOPPING.register(DuelManager::onServerStopping);
 
         DuelConnectionListener.register();
 
@@ -480,6 +482,34 @@ public class DuelManager {
         }
     }
     
+    /**
+     * On shutdown, restore everyone in an in-progress match to their pre-duel state instead of
+     * leaving them stranded in the arena dimension (active matches are not persisted across a
+     * restart). No result/ELO is recorded — the match was interrupted.
+     */
+    private static void onServerStopping(MinecraftServer server) {
+        for (ActiveDuel duel : new HashSet<>(activeDuels.values())) {
+            restorePlayer(server.getPlayerList().getPlayer(duel.getPlayer1()), duel.isMatchmaking());
+            restorePlayer(server.getPlayerList().getPlayer(duel.getPlayer2()), duel.isMatchmaking());
+            duel.getBossBar().removeAllPlayers();
+            if (duel.getArenaName() != null) {
+                ArenaManager.markInactive(duel.getArenaName());
+            }
+        }
+        activeDuels.clear();
+
+        for (ActiveTeamDuel duel : new HashSet<>(activeTeamDuels.values())) {
+            for (UUID id : duel.allPlayers()) {
+                restorePlayer(server.getPlayerList().getPlayer(id), duel.isMatchmaking());
+            }
+            duel.getBossBar().removeAllPlayers();
+            if (duel.getArenaName() != null) {
+                ArenaManager.markInactive(duel.getArenaName());
+            }
+        }
+        activeTeamDuels.clear();
+    }
+
     private static void onServerTick(MinecraftServer server) {
         long currentTime = System.currentTimeMillis();
         Set<ActiveDuel> processedDuels = new HashSet<>();
