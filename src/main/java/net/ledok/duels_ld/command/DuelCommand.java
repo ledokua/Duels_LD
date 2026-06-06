@@ -117,6 +117,7 @@ public class DuelCommand {
                         .suggests(DuelCommand::suggestArenaNames)
                         .executes(DuelCommand::arenaInfo)))
                 .then(Commands.literal("wand")
+                    .executes(DuelCommand::arenaWandUnbound)
                     .then(Commands.argument("name", StringArgumentType.word())
                         .suggests(DuelCommand::suggestArenaNames)
                         .executes(DuelCommand::arenaWand)))
@@ -442,9 +443,16 @@ public class DuelCommand {
         return 1;
     }
 
+    private static int arenaWandUnbound(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        ServerPlayer player = context.getSource().getPlayerOrException();
+        ArenaWand.giveUnbound(player);
+        context.getSource().sendSuccess(() -> Component.translatable("duels_ld.command.arena.wand_given_unbound").withStyle(ChatFormatting.LIGHT_PURPLE), false);
+        return 1;
+    }
+
     private static int arenaGui(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         ServerPlayer player = context.getSource().getPlayerOrException();
-        net.ledok.duels_ld.manager.ArenaGuiHandler.sendArenaList(player, true);
+        net.ledok.duels_ld.manager.ArenaGuiHandler.sendArenaList(player, net.ledok.duels_ld.network.ArenaListPayload.OPEN_GUI);
         return 1;
     }
 

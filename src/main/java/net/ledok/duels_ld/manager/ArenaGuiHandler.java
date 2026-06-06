@@ -28,7 +28,7 @@ public final class ArenaGuiHandler {
                     return;
                 }
                 apply(player, payload);
-                sendArenaList(player, false);
+                sendArenaList(player, ArenaListPayload.REFRESH);
             });
         });
     }
@@ -36,9 +36,19 @@ public final class ArenaGuiHandler {
     private static void apply(ServerPlayer player, ArenaActionPayload p) {
         String name = p.name();
         switch (p.action()) {
-            case "create" -> ArenaManager.createArena(name, player.level().dimension());
+            case "create" -> {
+                if (ArenaManager.createArena(name, player.level().dimension())) {
+                    ArenaWand.bind(player, name);
+                }
+            }
             case "delete" -> ArenaManager.removeArena(name);
             case "clone" -> ArenaManager.cloneArena(name, p.arg());
+            case "bind" -> ArenaWand.bind(player, name);
+            case "rename" -> {
+                if (ArenaManager.renameArena(name, p.arg()) && name.equals(ArenaWand.heldWandArena(player))) {
+                    ArenaWand.bind(player, p.arg());
+                }
+            }
             case "wand" -> {
                 ArenaWand.give(player, name);
                 ArenaWand.sendOverlay(player, name);
@@ -106,7 +116,7 @@ public final class ArenaGuiHandler {
         player.teleportTo(level, target.x, target.y, target.z, player.getYRot(), player.getXRot());
     }
 
-    public static void sendArenaList(ServerPlayer player, boolean open) {
+    public static void sendArenaList(ServerPlayer player, int target) {
         List<ArenaListPayload.Entry> entries = new ArrayList<>();
         for (ArenaManager.Arena a : ArenaManager.listArenas()) {
             entries.add(new ArenaListPayload.Entry(
@@ -115,6 +125,6 @@ public final class ArenaGuiHandler {
                 ArenaManager.isReadyFor(a, 1), ArenaManager.isReadyFor(a, 2),
                 ArenaManager.isActive(a.name), ArenaManager.spawnsOutsideBounds(a)));
         }
-        ServerPlayNetworking.send(player, new ArenaListPayload(open, entries));
+        ServerPlayNetworking.send(player, new ArenaListPayload(target, entries));
     }
 }

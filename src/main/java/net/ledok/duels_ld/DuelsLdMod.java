@@ -54,6 +54,7 @@ public class DuelsLdMod implements ModInitializer {
         PayloadTypeRegistry.playS2C().register(net.ledok.duels_ld.network.ArenaOverlayPayload.TYPE, net.ledok.duels_ld.network.ArenaOverlayPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(net.ledok.duels_ld.network.ArenaListPayload.TYPE, net.ledok.duels_ld.network.ArenaListPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(net.ledok.duels_ld.network.ArenaActionPayload.TYPE, net.ledok.duels_ld.network.ArenaActionPayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(net.ledok.duels_ld.network.ArenaWandModePayload.TYPE, net.ledok.duels_ld.network.ArenaWandModePayload.CODEC);
 
         StatsManager.init();
         MatchmakingConfigManager.init();

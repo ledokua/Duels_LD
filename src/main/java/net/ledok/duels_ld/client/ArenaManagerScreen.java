@@ -44,21 +44,25 @@ public class ArenaManagerScreen extends BaseOwoScreen<FlowLayout> {
     private static final int DANGER_DARK = 0xFF8F3A2C;
 
     private static List<ArenaListPayload.Entry> entries = List.of();
+    private static boolean wandMode = false;
 
     private FlowLayout contentArea;
     private LabelComponent headerCount;
     private TextBoxComponent createField;
     private String createDraft = "";
+    private String renaming = null;
+    private String renameDraft = "";
 
     public ArenaManagerScreen() {
         super(Component.translatable("duels_ld.screen.arena.title"));
     }
 
-    /** Entry point from the network receiver: opens the screen or refreshes the open one. */
-    public static void apply(boolean open, List<ArenaListPayload.Entry> data) {
+    /** Entry point from the network receiver: opens the screen (manager or wand) or refreshes it. */
+    public static void apply(int target, List<ArenaListPayload.Entry> data) {
         entries = data;
         Minecraft mc = Minecraft.getInstance();
-        if (open) {
+        if (target == ArenaListPayload.OPEN_GUI || target == ArenaListPayload.OPEN_WAND) {
+            wandMode = target == ArenaListPayload.OPEN_WAND;
             if (mc.screen instanceof ArenaManagerScreen s) {
                 s.rebuildContent();
             } else {
@@ -210,21 +214,68 @@ public class ArenaManagerScreen extends BaseOwoScreen<FlowLayout> {
         }
         row.child(meta);
 
+        if (e.name().equals(renaming)) {
+            row.child(renameRow(e));
+            return row;
+        }
+
         // Action buttons
         FlowLayout actions = Containers.horizontalFlow(Sizing.fill(100), Sizing.content());
         actions.gap(4);
         actions.alignment(HorizontalAlignment.LEFT, VerticalAlignment.CENTER);
+        if (wandMode) {
+            actions.child(action(Component.translatable("duels_ld.screen.arena.select"), 50, ACCENT, ACCENT, b -> {
+                send("bind", e.name(), "");
+                onClose();
+            }));
+        }
         actions.child(action(Component.translatable("duels_ld.screen.arena.tp"), 36, ACCENT_DARK, ACCENT, b -> send("tp", e.name(), "")));
-        actions.child(action(Component.translatable("duels_ld.screen.arena.wand"), 46, ACCENT_DARK, ACCENT, b -> send("wand", e.name(), "")));
-        actions.child(action(Component.translatable("duels_ld.screen.arena.pos1"), 40, ACCENT_DARK, ACCENT, b -> send("pos1", e.name(), "")));
-        actions.child(action(Component.translatable("duels_ld.screen.arena.pos2"), 40, ACCENT_DARK, ACCENT, b -> send("pos2", e.name(), "")));
-        actions.child(action(Component.translatable("duels_ld.screen.arena.add_t1"), 38, ACCENT_DARK, ACCENT, b -> send("addspawn", e.name(), "1")));
-        actions.child(action(Component.translatable("duels_ld.screen.arena.add_t2"), 38, ACCENT_DARK, ACCENT, b -> send("addspawn", e.name(), "2")));
+        actions.child(action(Component.translatable("duels_ld.screen.arena.wand"), 46, ACCENT_DARK, ACCENT, b -> {
+            send("wand", e.name(), "");
+            onClose();
+        }));
+        actions.child(action(Component.translatable("duels_ld.screen.arena.rename"), 50, ACCENT_DARK, ACCENT, b -> {
+            renaming = e.name();
+            renameDraft = e.name();
+            rebuildContent();
+        }));
         actions.child(Containers.horizontalFlow(Sizing.expand(), Sizing.content()));
         actions.child(action(Component.translatable("duels_ld.screen.arena.clone"), 44, ACCENT_DARK, ACCENT, b -> send("clone", e.name(), e.name() + "_copy")));
         actions.child(action(Component.translatable("duels_ld.screen.arena.delete"), 38, DANGER_DARK, DANGER, b -> send("delete", e.name(), "")));
         row.child(actions);
         return row;
+    }
+
+    private FlowLayout renameRow(ArenaListPayload.Entry e) {
+        FlowLayout line = Containers.horizontalFlow(Sizing.fill(100), Sizing.content());
+        line.gap(4);
+        line.alignment(HorizontalAlignment.LEFT, VerticalAlignment.CENTER);
+
+        FlowLayout fieldWrap = Containers.horizontalFlow(Sizing.expand(), Sizing.content());
+        fieldWrap.surface(Surface.flat(PANEL).and(Surface.outline(HAIRLINE)));
+        fieldWrap.alignment(HorizontalAlignment.LEFT, VerticalAlignment.CENTER);
+        FlowLayout accent = Containers.verticalFlow(Sizing.fixed(2), Sizing.fixed(18));
+        accent.surface(Surface.flat(ACCENT));
+        fieldWrap.child(accent);
+        TextBoxComponent field = Components.textBox(Sizing.expand(), renameDraft);
+        field.verticalSizing(Sizing.fixed(16));
+        field.onChanged().subscribe(v -> renameDraft = v);
+        fieldWrap.child(field);
+        line.child(fieldWrap);
+
+        line.child(action(Component.literal("✓"), 22, ACCENT_DARK, ACCENT, b -> {
+            String newName = field.getValue().trim();
+            if (!newName.isEmpty() && !newName.equals(e.name())) {
+                send("rename", e.name(), newName);
+            }
+            renaming = null;
+            rebuildContent();
+        }));
+        line.child(action(Component.literal("✗"), 22, DANGER_DARK, DANGER, b -> {
+            renaming = null;
+            rebuildContent();
+        }));
+        return line;
     }
 
     private void send(String action, String name, String arg) {

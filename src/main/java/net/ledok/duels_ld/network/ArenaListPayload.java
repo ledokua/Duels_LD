@@ -11,10 +11,14 @@ import java.util.List;
 
 /**
  * Server → client snapshot of every arena with readiness info, for the arena manager GUI.
- * {@code open} is true when sent from {@code /duel arena gui} (open the screen) and false for
- * post-action refreshes (only update an already-open screen).
+ * {@code target}: 0 = refresh an already-open screen only, 1 = open the manager GUI,
+ * 2 = open the wand selection screen (lets the player bind the held wand).
  */
-public record ArenaListPayload(boolean open, List<Entry> arenas) implements CustomPacketPayload {
+public record ArenaListPayload(int target, List<Entry> arenas) implements CustomPacketPayload {
+
+    public static final int REFRESH = 0;
+    public static final int OPEN_GUI = 1;
+    public static final int OPEN_WAND = 2;
 
     public record Entry(String name, String dimensionId, boolean hasBounds, int team1, int team2,
                         boolean ready1v1, boolean ready2v2, boolean active, int outside) {}
@@ -24,7 +28,7 @@ public record ArenaListPayload(boolean open, List<Entry> arenas) implements Cust
 
     public static final StreamCodec<FriendlyByteBuf, ArenaListPayload> CODEC = StreamCodec.of(
         (buf, v) -> {
-            buf.writeBoolean(v.open);
+            buf.writeVarInt(v.target);
             buf.writeVarInt(v.arenas.size());
             for (Entry e : v.arenas) {
                 buf.writeUtf(e.name());
@@ -39,7 +43,7 @@ public record ArenaListPayload(boolean open, List<Entry> arenas) implements Cust
             }
         },
         buf -> {
-            boolean open = buf.readBoolean();
+            int target = buf.readVarInt();
             int n = buf.readVarInt();
             List<Entry> arenas = new ArrayList<>(n);
             for (int i = 0; i < n; i++) {
@@ -48,7 +52,7 @@ public record ArenaListPayload(boolean open, List<Entry> arenas) implements Cust
                     buf.readVarInt(), buf.readVarInt(),
                     buf.readBoolean(), buf.readBoolean(), buf.readBoolean(), buf.readVarInt()));
             }
-            return new ArenaListPayload(open, arenas);
+            return new ArenaListPayload(target, arenas);
         }
     );
 

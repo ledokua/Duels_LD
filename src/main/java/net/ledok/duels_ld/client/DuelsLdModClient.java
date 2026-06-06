@@ -71,7 +71,7 @@ public class DuelsLdModClient implements ClientModInitializer {
         });
 
         ClientPlayNetworking.registerGlobalReceiver(ArenaListPayload.TYPE, (payload, context) -> {
-            context.client().execute(() -> ArenaManagerScreen.apply(payload.open(), payload.arenas()));
+            context.client().execute(() -> ArenaManagerScreen.apply(payload.target(), payload.arenas()));
         });
 
         ArenaOverlayRenderer.register();

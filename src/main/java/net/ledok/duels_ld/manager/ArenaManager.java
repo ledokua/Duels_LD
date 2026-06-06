@@ -66,6 +66,43 @@ public class ArenaManager {
         return arenas.get(name);
     }
 
+    /** Renames an arena. Fails if the source is missing or the target name is taken/empty. */
+    public static boolean renameArena(String oldName, String newName) {
+        if (newName == null || newName.isEmpty() || oldName.equals(newName)) {
+            return false;
+        }
+        Arena arena = arenas.get(oldName);
+        if (arena == null || arenas.containsKey(newName)) {
+            return false;
+        }
+        arenas.remove(oldName);
+        arena.name = newName;
+        arenas.put(newName, arena);
+        if (activeArenas.remove(oldName)) {
+            activeArenas.add(newName);
+        }
+        save();
+        return true;
+    }
+
+    /** Adds a spawn at {@code pos}, or removes it if a spawn of that team already exists there. */
+    public static boolean toggleSpawn(String name, int team, BlockPos pos, float yaw, float pitch) {
+        Arena arena = arenas.get(name);
+        if (arena == null) {
+            return false;
+        }
+        List<SpawnPoint> list = team == 1 ? arena.team1Spawns : team == 2 ? arena.team2Spawns : null;
+        if (list == null) {
+            return false;
+        }
+        boolean removed = list.removeIf(s -> s.pos().equals(pos));
+        if (!removed) {
+            list.add(new SpawnPoint(pos, yaw, pitch));
+        }
+        save();
+        return !removed; // true = added, false = removed
+    }
+
     /** Deep-copies an arena (bounds + spawns) under a new name. Fails if dst exists or src is missing. */
     public static boolean cloneArena(String src, String dst) {
         Arena source = arenas.get(src);
