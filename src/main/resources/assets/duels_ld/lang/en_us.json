@@ -121,6 +121,8 @@
   "duels_ld.command.arena.info_warn_outside": "⚠ %s spawn(s) lie outside the bounds",
   "duels_ld.command.arena.wand_given": "Arena wand for '%s' — left-click sets pos1, right-click sets pos2.",
   "duels_ld.item.arena_wand": "Duel Arena Wand: %s",
+  "item.duels_ld.arena_wand": "Duel Arena Wand",
+  "item.duels_ld.arena_wand.hint": "L-click: set pos1  ·  R-click: set pos2",
   "duels_ld.command.arena.tp_no_target": "Arena '%s' has no bounds or spawns to teleport to.",
   "duels_ld.screen.arena.title": "Arena Manager",
   "duels_ld.screen.arena.count": "%s arenas",

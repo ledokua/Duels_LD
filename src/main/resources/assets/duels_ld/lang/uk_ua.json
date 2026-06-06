@@ -121,6 +121,8 @@
   "duels_ld.command.arena.info_warn_outside": "⚠ %s точок появи поза межами",
   "duels_ld.command.arena.wand_given": "Жезл арени для '%s' — ЛКМ задає точку 1, ПКМ — точку 2.",
   "duels_ld.item.arena_wand": "Жезл арени дуелей: %s",
+  "item.duels_ld.arena_wand": "Жезл арени дуелей",
+  "item.duels_ld.arena_wand.hint": "ЛКМ: точка 1  ·  ПКМ: точка 2",
   "duels_ld.command.arena.tp_no_target": "Арена '%s' не має меж або точок появи для телепортації.",
   "duels_ld.screen.arena.title": "Менеджер арен",
   "duels_ld.screen.arena.count": "%s арен",

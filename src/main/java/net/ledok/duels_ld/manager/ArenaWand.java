@@ -4,6 +4,7 @@ import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.ledok.duels_ld.network.ArenaOverlayPayload;
+import net.ledok.duels_ld.registry.ItemRegistry;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
@@ -12,7 +13,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.CustomData;
 
 import java.util.ArrayList;
@@ -79,7 +79,7 @@ public final class ArenaWand {
 
     /** Gives the player a wand bound to the named arena. */
     public static void give(ServerPlayer player, String arenaName) {
-        ItemStack wand = new ItemStack(Items.BLAZE_ROD);
+        ItemStack wand = new ItemStack(ItemRegistry.ARENA_WAND);
         CompoundTag tag = new CompoundTag();
         tag.putString(TAG_KEY, arenaName);
         wand.set(DataComponents.CUSTOM_DATA, CustomData.of(tag));
@@ -92,7 +92,7 @@ public final class ArenaWand {
 
     /** The arena name a wand stack is bound to, or {@code null} if the stack is not a wand. */
     public static String wandArena(ItemStack stack) {
-        if (stack == null || !stack.is(Items.BLAZE_ROD)) {
+        if (stack == null || !stack.is(ItemRegistry.ARENA_WAND)) {
             return null;
         }
         CustomData data = stack.get(DataComponents.CUSTOM_DATA);

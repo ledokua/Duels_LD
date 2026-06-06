@@ -36,6 +36,8 @@ public class DuelsLdMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        net.ledok.duels_ld.registry.ItemRegistry.initialize();
+
         PayloadTypeRegistry.playC2S().register(JoinQueuePayload.TYPE, JoinQueuePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(LeaveQueuePayload.TYPE, LeaveQueuePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(UpdateMatchmakingSettingsPayload.TYPE, UpdateMatchmakingSettingsPayload.CODEC);
