@@ -49,6 +49,7 @@ public class PartyManager {
                 int elo1 = MMRManager.getRating1v1(player.getUUID());
                 int elo2 = MMRManager.getRating2v2(player.getUUID());
                 ServerPlayNetworking.send(player, new SyncEloPayload(elo1, elo2));
+                BattleRewards.sendStatus(player);
             });
         });
     }

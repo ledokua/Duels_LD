@@ -65,6 +65,10 @@ public class DuelsLdModClient implements ClientModInitializer {
             context.client().execute(() -> MatchmakingScreen.applyQueueState(payload.in1v1(), payload.in2v2()));
         });
 
+        ClientPlayNetworking.registerGlobalReceiver(net.ledok.duels_ld.network.RewardStatusPayload.TYPE, (payload, context) -> {
+            context.client().execute(() -> MatchmakingScreen.applyRewardStatus(payload.enabled(), payload.earnedToday(), payload.dailyCap()));
+        });
+
         ClientPlayNetworking.registerGlobalReceiver(ArenaOverlayPayload.TYPE, (payload, context) -> {
             context.client().execute(() -> ArenaOverlayRenderer.setSnapshot(payload));
         });

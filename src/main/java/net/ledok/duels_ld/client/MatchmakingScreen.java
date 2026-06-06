@@ -62,6 +62,9 @@ public class MatchmakingScreen extends BaseOwoScreen<FlowLayout> {
     private static long queuedAt2v2 = -1;
     private static int elo1v1 = 0;
     private static int elo2v2 = 0;
+    private static boolean rewardEnabled = false;
+    private static long rewardEarned = 0;
+    private static long rewardCap = 0;
     private static List<SyncPartyPayload.Member> partyMembers = new ArrayList<>();
     private static String incomingInvite = null;
     private static String inviteDraft = "";
@@ -193,6 +196,17 @@ public class MatchmakingScreen extends BaseOwoScreen<FlowLayout> {
         cards.child(buildModeCard("duels_ld.screen.matchmaking.mode_1v1", q1, value1v1, elo1v1, queuedAt1v1));
         cards.child(buildModeCard("duels_ld.screen.matchmaking.mode_2v2", q2, value2v2, elo2v2, queuedAt2v2));
         contentArea.child(cards);
+
+        if (rewardEnabled) {
+            contentArea.child(spacer(3));
+            FlowLayout rewardRow = Containers.horizontalFlow(Sizing.fill(100), Sizing.content());
+            rewardRow.gap(4);
+            rewardRow.alignment(HorizontalAlignment.LEFT, VerticalAlignment.CENTER);
+            rewardRow.child(text(Component.translatable("duels_ld.screen.matchmaking.rewards_today"), INK_DIM));
+            boolean capped = rewardEarned >= rewardCap;
+            rewardRow.child(text(Component.literal(rewardEarned + " / " + rewardCap), capped ? GOLD : GOOD));
+            contentArea.child(rewardRow);
+        }
 
         contentArea.child(spacer(8));
 
@@ -667,6 +681,13 @@ public class MatchmakingScreen extends BaseOwoScreen<FlowLayout> {
     public static void applyElo(int v1, int v2) {
         elo1v1 = v1;
         elo2v2 = v2;
+        notifyScreen();
+    }
+
+    public static void applyRewardStatus(boolean enabled, long earned, long cap) {
+        rewardEnabled = enabled;
+        rewardEarned = earned;
+        rewardCap = cap;
         notifyScreen();
     }
 

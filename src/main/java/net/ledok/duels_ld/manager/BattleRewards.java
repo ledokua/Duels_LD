@@ -1,6 +1,8 @@
 package net.ledok.duels_ld.manager;
 
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.ledok.duels_ld.integration.EconomyBridge;
+import net.ledok.duels_ld.network.RewardStatusPayload;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
@@ -89,7 +91,19 @@ public final class BattleRewards {
         if (online != null) {
             online.sendSystemMessage(Component.translatable("duels_ld.reward.earned", EconomyBridge.format(payout))
                 .withStyle(ChatFormatting.GOLD));
+            sendStatus(online);
         }
+    }
+
+    /** Pushes the player's current daily earned / cap to the client for the matchmaking screen. */
+    public static void sendStatus(ServerPlayer player) {
+        MatchmakingConfigManager.RewardConfig cfg = MatchmakingConfigManager.getConfig().rewards;
+        boolean enabled = cfg != null && cfg.enabled && EconomyBridge.isAvailable();
+        long earned = enabled
+            ? BattleRewardStore.get(player.server).earnedToday(player.getUUID(), BattleRewardStore.today())
+            : 0L;
+        long cap = cfg == null ? 0L : cfg.dailyCap;
+        ServerPlayNetworking.send(player, new RewardStatusPayload(enabled, earned, cap));
     }
 
     private static long matchDurationSeconds(ActiveMatch match) {
