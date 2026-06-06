@@ -1,29 +1,56 @@
 package net.ledok.duels_ld.client;
 
+import io.wispforest.owo.ui.base.BaseOwoScreen;
+import io.wispforest.owo.ui.component.ButtonComponent;
+import io.wispforest.owo.ui.component.Components;
+import io.wispforest.owo.ui.component.LabelComponent;
+import io.wispforest.owo.ui.component.TextBoxComponent;
+import io.wispforest.owo.ui.container.Containers;
+import io.wispforest.owo.ui.container.FlowLayout;
+import io.wispforest.owo.ui.container.ScrollContainer;
+import io.wispforest.owo.ui.core.Color;
+import io.wispforest.owo.ui.core.HorizontalAlignment;
+import io.wispforest.owo.ui.core.Insets;
+import io.wispforest.owo.ui.core.OwoUIAdapter;
+import io.wispforest.owo.ui.core.Sizing;
+import io.wispforest.owo.ui.core.Surface;
+import io.wispforest.owo.ui.core.VerticalAlignment;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.ledok.duels_ld.network.SyncMatchmakingSettingsPayload;
 import net.ledok.duels_ld.network.UpdateMatchmakingSettingsPayload;
-import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import org.jetbrains.annotations.NotNull;
 
-public class MatchmakingAdminScreen extends Screen {
-    private static final int PANEL_WIDTH = 260;
-    private static final int PANEL_HEIGHT = 180;
-    private static final ResourceLocation LOBBY_BG = ResourceLocation.fromNamespaceAndPath("duels_ld", "textures/gui/lobby_main.png");
+import java.util.function.Consumer;
 
-    private EditBox oneVOneTime;
-    private EditBox oneVOneWinHp;
-    private EditBox twoVTwoTime;
-    private EditBox twoVTwoWinHp;
-    private EditBox offensePerDamage;
-    private EditBox supportPerHeal;
-    private EditBox defensePerBlocked;
-    private EditBox killBonus;
-    private Component errorMessage = Component.empty();
+/**
+ * Admin settings form, styled to match the Arenas_LD raid/dungeon screens
+ * (owo-lib flat dark theme). Edits duration / win-HP / scoring weights.
+ */
+public class MatchmakingAdminScreen extends BaseOwoScreen<FlowLayout> {
+
+    private static final int BG          = 0xFF070E14;
+    private static final int PANEL       = 0xFF121922;
+    private static final int PANEL_2     = 0xFF0C1218;
+    private static final int HAIRLINE    = 0xFF283442;
+    private static final int HAIRLINE_HI = 0xFF3A4A5C;
+    private static final int INK         = 0xFFE8EEF5;
+    private static final int INK_MID     = 0xFF9AA8B8;
+    private static final int INK_DIM     = 0xFF5F6E80;
+    private static final int DANGER      = 0xFFE8624A;
+    private static final int ACCENT      = 0xFFA98BE8;
+    private static final int ACCENT_DARK = 0xFF6C4FB5;
+
+    private TextBoxComponent oneVOneTime;
+    private TextBoxComponent oneVOneWinHp;
+    private TextBoxComponent twoVTwoTime;
+    private TextBoxComponent twoVTwoWinHp;
+    private TextBoxComponent offensePerDamage;
+    private TextBoxComponent supportPerHeal;
+    private TextBoxComponent defensePerBlocked;
+    private TextBoxComponent killBonus;
+
+    private LabelComponent errorLabel;
     private SyncMatchmakingSettingsPayload pendingSettings;
 
     public MatchmakingAdminScreen() {
@@ -31,45 +58,49 @@ public class MatchmakingAdminScreen extends Screen {
     }
 
     @Override
-    protected void init() {
-        int left = (this.width - PANEL_WIDTH) / 2;
-        int top = (this.height - PANEL_HEIGHT) / 2;
-        int labelX = left + 12;
-        int fieldX = left + 165;
-        int rowHeight = 18;
+    protected @NotNull OwoUIAdapter<FlowLayout> createAdapter() {
+        return OwoUIAdapter.create(this, Containers::verticalFlow);
+    }
 
-        oneVOneTime = new EditBox(this.font, fieldX, top + 24, 70, 16, Component.translatable("duels_ld.screen.matchmaking_admin.one_v_one_time_placeholder"));
-        oneVOneWinHp = new EditBox(this.font, fieldX, top + 24 + rowHeight, 70, 16, Component.translatable("duels_ld.screen.matchmaking_admin.one_v_one_win_hp_placeholder"));
-        twoVTwoTime = new EditBox(this.font, fieldX, top + 24 + rowHeight * 2, 70, 16, Component.translatable("duels_ld.screen.matchmaking_admin.two_v_two_time_placeholder"));
-        twoVTwoWinHp = new EditBox(this.font, fieldX, top + 24 + rowHeight * 3, 70, 16, Component.translatable("duels_ld.screen.matchmaking_admin.two_v_two_win_hp_placeholder"));
+    @Override
+    protected void build(FlowLayout root) {
+        root.surface(Surface.flat(BG));
+        root.alignment(HorizontalAlignment.CENTER, VerticalAlignment.CENTER);
 
-        offensePerDamage = new EditBox(this.font, fieldX, top + 24 + rowHeight * 4, 70, 16, Component.translatable("duels_ld.screen.matchmaking_admin.offense_placeholder"));
-        supportPerHeal = new EditBox(this.font, fieldX, top + 24 + rowHeight * 5, 70, 16, Component.translatable("duels_ld.screen.matchmaking_admin.support_placeholder"));
-        defensePerBlocked = new EditBox(this.font, fieldX, top + 24 + rowHeight * 6, 70, 16, Component.translatable("duels_ld.screen.matchmaking_admin.defense_placeholder"));
-        killBonus = new EditBox(this.font, fieldX, top + 24 + rowHeight * 7, 70, 16, Component.translatable("duels_ld.screen.matchmaking_admin.kill_bonus_placeholder"));
+        int shellWidth = Math.max(340, Math.min(420, this.width - 24));
+        int shellHeight = Math.max(260, Math.min(360, this.height - 24));
+        FlowLayout shell = Containers.verticalFlow(Sizing.fixed(shellWidth), Sizing.fixed(shellHeight));
+        shell.surface(Surface.flat(PANEL).and(Surface.outline(HAIRLINE_HI)));
 
-        addRenderableWidget(oneVOneTime);
-        addRenderableWidget(oneVOneWinHp);
-        addRenderableWidget(twoVTwoTime);
-        addRenderableWidget(twoVTwoWinHp);
-        addRenderableWidget(offensePerDamage);
-        addRenderableWidget(supportPerHeal);
-        addRenderableWidget(defensePerBlocked);
-        addRenderableWidget(killBonus);
+        shell.child(buildHeader());
 
-        addRenderableWidget(new LabelWidget(labelX, top + 26, Component.translatable("duels_ld.screen.matchmaking_admin.one_v_one_time_label")));
-        addRenderableWidget(new LabelWidget(labelX, top + 26 + rowHeight, Component.translatable("duels_ld.screen.matchmaking_admin.one_v_one_win_hp_label")));
-        addRenderableWidget(new LabelWidget(labelX, top + 26 + rowHeight * 2, Component.translatable("duels_ld.screen.matchmaking_admin.two_v_two_time_label")));
-        addRenderableWidget(new LabelWidget(labelX, top + 26 + rowHeight * 3, Component.translatable("duels_ld.screen.matchmaking_admin.two_v_two_win_hp_label")));
-        addRenderableWidget(new LabelWidget(labelX, top + 26 + rowHeight * 4, Component.translatable("duels_ld.screen.matchmaking_admin.offense_label")));
-        addRenderableWidget(new LabelWidget(labelX, top + 26 + rowHeight * 5, Component.translatable("duels_ld.screen.matchmaking_admin.support_label")));
-        addRenderableWidget(new LabelWidget(labelX, top + 26 + rowHeight * 6, Component.translatable("duels_ld.screen.matchmaking_admin.defense_label")));
-        addRenderableWidget(new LabelWidget(labelX, top + 26 + rowHeight * 7, Component.translatable("duels_ld.screen.matchmaking_admin.kill_bonus_label")));
+        FlowLayout content = Containers.verticalFlow(Sizing.fill(100), Sizing.content());
+        content.surface(Surface.flat(PANEL));
+        content.padding(Insets.of(10));
+        content.gap(4);
 
-        addRenderableWidget(Button.builder(Component.translatable("duels_ld.screen.matchmaking_admin.save"), button -> save())
-            .bounds(left + 12, top + PANEL_HEIGHT - 26, 70, 18).build());
-        addRenderableWidget(Button.builder(Component.translatable("duels_ld.screen.matchmaking_admin.close"), button -> this.onClose())
-            .bounds(left + PANEL_WIDTH - 82, top + PANEL_HEIGHT - 26, 70, 18).build());
+        content.child(sectionHeader(Component.translatable("duels_ld.screen.matchmaking_admin.title")));
+        content.child(spacer(2));
+        oneVOneTime = settingRow(content, "duels_ld.screen.matchmaking_admin.one_v_one_time_label");
+        oneVOneWinHp = settingRow(content, "duels_ld.screen.matchmaking_admin.one_v_one_win_hp_label");
+        twoVTwoTime = settingRow(content, "duels_ld.screen.matchmaking_admin.two_v_two_time_label");
+        twoVTwoWinHp = settingRow(content, "duels_ld.screen.matchmaking_admin.two_v_two_win_hp_label");
+
+        content.child(spacer(8));
+        offensePerDamage = settingRow(content, "duels_ld.screen.matchmaking_admin.offense_label");
+        supportPerHeal = settingRow(content, "duels_ld.screen.matchmaking_admin.support_label");
+        defensePerBlocked = settingRow(content, "duels_ld.screen.matchmaking_admin.defense_label");
+        killBonus = settingRow(content, "duels_ld.screen.matchmaking_admin.kill_bonus_label");
+
+        ScrollContainer<FlowLayout> scroll = Containers.verticalScroll(Sizing.fill(100), Sizing.expand(), content);
+        scroll.surface(Surface.flat(PANEL));
+        scroll.scrollbar(ScrollContainer.Scrollbar.vanillaFlat());
+        scroll.scrollbarThiccness(8);
+        scroll.scrollStep(18);
+        shell.child(scroll);
+
+        shell.child(buildFooter());
+        root.child(shell);
 
         if (pendingSettings != null) {
             applySettings(pendingSettings);
@@ -77,36 +108,58 @@ public class MatchmakingAdminScreen extends Screen {
         }
     }
 
+    private FlowLayout buildHeader() {
+        FlowLayout header = Containers.horizontalFlow(Sizing.fill(100), Sizing.fixed(46));
+        header.surface(Surface.flat(PANEL_2));
+        header.padding(Insets.of(8, 8, 10, 10));
+        header.gap(10);
+        header.alignment(HorizontalAlignment.LEFT, VerticalAlignment.CENTER);
+
+        FlowLayout mark = Containers.verticalFlow(Sizing.fixed(20), Sizing.fixed(20));
+        mark.surface(Surface.flat(ACCENT).and(Surface.outline(ACCENT_DARK)));
+        header.child(mark);
+
+        header.child(text(Component.translatable("duels_ld.screen.matchmaking_admin.title"), INK));
+        header.child(Containers.horizontalFlow(Sizing.expand(), Sizing.content()));
+
+        ButtonComponent close = styledButton(Component.literal("×"), PANEL, ACCENT, HAIRLINE, b -> onClose());
+        close.sizing(Sizing.fixed(22), Sizing.fixed(18));
+        header.child(close);
+        return header;
+    }
+
+    private FlowLayout buildFooter() {
+        FlowLayout footer = Containers.horizontalFlow(Sizing.fill(100), Sizing.fixed(30));
+        footer.surface(Surface.flat(PANEL_2));
+        footer.padding(Insets.of(6));
+        footer.gap(6);
+        footer.alignment(HorizontalAlignment.LEFT, VerticalAlignment.CENTER);
+
+        errorLabel = Components.label(Component.empty());
+        errorLabel.color(Color.ofArgb(DANGER));
+        errorLabel.horizontalSizing(Sizing.expand());
+        footer.child(errorLabel);
+
+        ButtonComponent save = styledButton(
+            Component.translatable("duels_ld.screen.matchmaking_admin.save"), ACCENT_DARK, ACCENT, ACCENT, b -> save());
+        save.horizontalSizing(Sizing.fixed(80));
+        footer.child(save);
+        return footer;
+    }
+
     public void applySettings(SyncMatchmakingSettingsPayload payload) {
         if (oneVOneTime == null) {
             pendingSettings = payload;
             return;
         }
-        oneVOneTime.setValue(Integer.toString(payload.oneVOneDuration()));
-        oneVOneWinHp.setValue(Integer.toString(payload.oneVOneWinHp()));
-        twoVTwoTime.setValue(Integer.toString(payload.twoVTwoDuration()));
-        twoVTwoWinHp.setValue(Integer.toString(payload.twoVTwoWinHp()));
-        offensePerDamage.setValue(Double.toString(payload.offensePerDamage()));
-        supportPerHeal.setValue(Double.toString(payload.supportPerHeal()));
-        defensePerBlocked.setValue(Double.toString(payload.defensePerBlocked()));
-        killBonus.setValue(Double.toString(payload.killBonus()));
-    }
-
-    @Override
-    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
-
-        int left = (this.width - PANEL_WIDTH) / 2;
-        int top = (this.height - PANEL_HEIGHT) / 2;
-
-        guiGraphics.blit(LOBBY_BG, left, top, 0, 0, PANEL_WIDTH, PANEL_HEIGHT, PANEL_WIDTH, PANEL_HEIGHT);
-        guiGraphics.drawCenteredString(this.font, this.title, left + PANEL_WIDTH / 2, top + 3, 0xFF000000);
-
-        if (!errorMessage.getString().isEmpty()) {
-            guiGraphics.drawString(this.font, errorMessage, left + 12, top + PANEL_HEIGHT - 40, 0xFFFF6666);
-        }
-
-        super.render(guiGraphics, mouseX, mouseY, partialTick);
+        oneVOneTime.text(Integer.toString(payload.oneVOneDuration()));
+        oneVOneWinHp.text(Integer.toString(payload.oneVOneWinHp()));
+        twoVTwoTime.text(Integer.toString(payload.twoVTwoDuration()));
+        twoVTwoWinHp.text(Integer.toString(payload.twoVTwoWinHp()));
+        offensePerDamage.text(Double.toString(payload.offensePerDamage()));
+        supportPerHeal.text(Double.toString(payload.supportPerHeal()));
+        defensePerBlocked.text(Double.toString(payload.defensePerBlocked()));
+        killBonus.text(Double.toString(payload.killBonus()));
     }
 
     private void save() {
@@ -120,22 +173,30 @@ public class MatchmakingAdminScreen extends Screen {
         double kill = parseDouble(killBonus.getValue());
 
         if (v1Time < 10 || v2Time < 10) {
-            errorMessage = Component.translatable("duels_ld.screen.matchmaking_admin.error_time_min");
+            setError("duels_ld.screen.matchmaking_admin.error_time_min");
             return;
         }
         if (v1Hp < 0 || v1Hp > 100 || v2Hp < 0 || v2Hp > 100) {
-            errorMessage = Component.translatable("duels_ld.screen.matchmaking_admin.error_win_hp_range");
+            setError("duels_ld.screen.matchmaking_admin.error_win_hp_range");
             return;
         }
         if (off < 0 || sup < 0 || def < 0 || kill < 0) {
-            errorMessage = Component.translatable("duels_ld.screen.matchmaking_admin.error_points_non_negative");
+            setError("duels_ld.screen.matchmaking_admin.error_points_non_negative");
             return;
         }
 
-        errorMessage = Component.empty();
+        if (errorLabel != null) {
+            errorLabel.text(Component.empty());
+        }
         ClientPlayNetworking.send(new UpdateMatchmakingSettingsPayload(
             v1Time, v1Hp, v2Time, v2Hp, off, sup, def, kill
         ));
+    }
+
+    private void setError(String key) {
+        if (errorLabel != null) {
+            errorLabel.text(Component.translatable(key));
+        }
     }
 
     private int parseInt(String value) {
@@ -154,20 +215,62 @@ public class MatchmakingAdminScreen extends Screen {
         }
     }
 
-    private class LabelWidget extends net.minecraft.client.gui.components.AbstractWidget {
-        public LabelWidget(int x, int y, Component text) {
-            super(x, y, 130, 16, text);
-            this.active = false;
-            this.visible = true;
-        }
+    // ── UI helpers ────────────────────────────────────────────────────────────
 
-        @Override
-        protected void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-            guiGraphics.drawString(MatchmakingAdminScreen.this.font, this.getMessage(), this.getX(), this.getY(), 0xFFFFFFFF);
-        }
+    private TextBoxComponent settingRow(FlowLayout parent, String captionKey) {
+        FlowLayout row = Containers.horizontalFlow(Sizing.fill(100), Sizing.fixed(22));
+        row.gap(6);
+        row.alignment(HorizontalAlignment.LEFT, VerticalAlignment.CENTER);
 
-        @Override
-        protected void updateWidgetNarration(net.minecraft.client.gui.narration.NarrationElementOutput narrationElementOutput) {
-        }
+        LabelComponent caption = Components.label(Component.translatable(captionKey));
+        caption.color(Color.ofArgb(INK_MID));
+        caption.horizontalSizing(Sizing.expand());
+        row.child(caption);
+
+        FlowLayout fieldWrap = Containers.horizontalFlow(Sizing.fixed(90), Sizing.fixed(20));
+        fieldWrap.surface(Surface.flat(PANEL_2).and(Surface.outline(HAIRLINE)));
+        fieldWrap.alignment(HorizontalAlignment.LEFT, VerticalAlignment.CENTER);
+        FlowLayout accent = Containers.verticalFlow(Sizing.fixed(2), Sizing.fill(100));
+        accent.surface(Surface.flat(ACCENT));
+        fieldWrap.child(accent);
+
+        TextBoxComponent field = Components.textBox(Sizing.expand(), "");
+        field.verticalSizing(Sizing.fixed(16));
+        fieldWrap.child(field);
+        row.child(fieldWrap);
+
+        parent.child(row);
+        return field;
+    }
+
+    private FlowLayout sectionHeader(Component title) {
+        FlowLayout row = Containers.horizontalFlow(Sizing.fill(100), Sizing.content());
+        row.alignment(HorizontalAlignment.LEFT, VerticalAlignment.CENTER);
+        row.child(text(title, INK_DIM));
+        return row;
+    }
+
+    private FlowLayout spacer(int px) {
+        FlowLayout spacer = Containers.verticalFlow(Sizing.fill(100), Sizing.fixed(px));
+        spacer.surface(Surface.BLANK);
+        return spacer;
+    }
+
+    private LabelComponent text(Component component, int color) {
+        LabelComponent label = Components.label(component);
+        label.color(Color.ofArgb(color));
+        return label;
+    }
+
+    private ButtonComponent styledButton(Component text, int base, int hover, int border, Consumer<ButtonComponent> action) {
+        ButtonComponent button = Components.button(text, action);
+        button.sizing(Sizing.content(), Sizing.fixed(18));
+        button.renderer((context, rendered, delta) -> {
+            int fill = rendered.active() ? (rendered.isHoveredOrFocused() ? hover : base) : PANEL;
+            int outline = rendered.active() ? border : HAIRLINE;
+            context.fill(rendered.getX(), rendered.getY(), rendered.getX() + rendered.getWidth(), rendered.getY() + rendered.getHeight(), fill);
+            context.drawRectOutline(rendered.getX(), rendered.getY(), rendered.getWidth(), rendered.getHeight(), outline);
+        });
+        return button;
     }
 }
