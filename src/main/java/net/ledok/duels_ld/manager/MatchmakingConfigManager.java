@@ -94,8 +94,10 @@ public class MatchmakingConfigManager {
         // fullRewardSeconds (so AFK / instant-forfeit matches pay little or nothing).
         public int minDurationSeconds = 20;
         public int fullRewardSeconds = 60;
-        // Hard ceiling on battle currency a player can earn per day.
-        public long dailyCap = 1000;
+        // Hard ceiling on battle currency a player can earn per day, per outcome.
+        public long winDailyCap = 800;
+        public long lossDailyCap = 150;
+        public long drawDailyCap = 100;
         // Each repeat match vs the same opponent (within a day) multiplies the reward by this %.
         public int sameOpponentDecayPercent = 50;
         // Win Elo gain at which the gate factor is 1.0; smaller gains (stomping weak opponents)

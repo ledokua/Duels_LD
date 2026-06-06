@@ -78,14 +78,19 @@ public final class BattleRewards {
         amount *= Math.pow(Math.max(0, cfg.sameOpponentDecayPercent) / 100.0, priorMatches);
 
         long payout = Math.round(amount);
-        long remaining = cfg.dailyCap - store.earnedToday(player, today);
+        long cap = switch (outcome) {
+            case WIN -> cfg.winDailyCap;
+            case LOSS -> cfg.lossDailyCap;
+            case DRAW -> cfg.drawDailyCap;
+        };
+        long remaining = cap - store.earned(player, outcome.ordinal(), today);
         payout = Math.min(payout, Math.max(0, remaining));
         if (payout <= 0) {
             return;
         }
 
         EconomyBridge.deliver(player, payout, "DUEL_" + outcome.name());
-        store.record(player, payout, opponents, today);
+        store.record(player, outcome.ordinal(), payout, opponents, today);
 
         ServerPlayer online = server.getPlayerList().getPlayer(player);
         if (online != null) {
@@ -100,9 +105,9 @@ public final class BattleRewards {
         MatchmakingConfigManager.RewardConfig cfg = MatchmakingConfigManager.getConfig().rewards;
         boolean enabled = cfg != null && cfg.enabled && EconomyBridge.isAvailable();
         long earned = enabled
-            ? BattleRewardStore.get(player.server).earnedToday(player.getUUID(), BattleRewardStore.today())
+            ? BattleRewardStore.get(player.server).totalEarned(player.getUUID(), BattleRewardStore.today())
             : 0L;
-        long cap = cfg == null ? 0L : cfg.dailyCap;
+        long cap = cfg == null ? 0L : cfg.winDailyCap + cfg.lossDailyCap + cfg.drawDailyCap;
         ServerPlayNetworking.send(player, new RewardStatusPayload(enabled, earned, cap));
     }
 

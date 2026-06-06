@@ -13,6 +13,7 @@ import net.minecraft.world.level.saveddata.SavedData;
 
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -39,18 +40,25 @@ public class BattleRewardStore extends SavedData {
 
     /** Returns the player's entry for today, resetting it if a new day has started. */
     private Entry current(UUID uuid, long today) {
-        Entry e = entries.computeIfAbsent(uuid, k -> new Entry(today, 0L, new HashMap<>()));
+        Entry e = entries.computeIfAbsent(uuid, k -> new Entry(today, new long[3], new HashMap<>()));
         if (e.dayKey != today) {
             e.dayKey = today;
-            e.earnedToday = 0L;
+            java.util.Arrays.fill(e.earned, 0L);
             e.opponents.clear();
             setDirty();
         }
         return e;
     }
 
-    public long earnedToday(UUID uuid, long today) {
-        return current(uuid, today).earnedToday;
+    /** Coins earned today for one outcome (0 = win, 1 = loss, 2 = draw). */
+    public long earned(UUID uuid, int outcome, long today) {
+        return current(uuid, today).earned[outcome];
+    }
+
+    /** Total coins earned today across all outcomes (for the screen display). */
+    public long totalEarned(UUID uuid, long today) {
+        long[] earned = current(uuid, today).earned;
+        return earned[0] + earned[1] + earned[2];
     }
 
     /** Highest prior match count this player has against any of the given opponents today. */
@@ -63,10 +71,10 @@ public class BattleRewardStore extends SavedData {
         return max;
     }
 
-    /** Records a paid reward: adds to the daily total and bumps each opponent's match count. */
-    public void record(UUID uuid, long amount, Collection<UUID> opponents, long today) {
+    /** Records a paid reward for an outcome: adds to that day-total and bumps opponent counts. */
+    public void record(UUID uuid, int outcome, long amount, Collection<UUID> opponents, long today) {
         Entry e = current(uuid, today);
-        e.earnedToday += amount;
+        e.earned[outcome] += amount;
         for (UUID opp : opponents) {
             e.opponents.merge(opp, 1, Integer::sum);
         }
@@ -93,19 +101,27 @@ public class BattleRewardStore extends SavedData {
 
     static final class Entry {
         long dayKey;
-        long earnedToday;
+        final long[] earned; // [win, loss, draw]
         final Map<UUID, Integer> opponents;
 
-        Entry(long dayKey, long earnedToday, Map<UUID, Integer> opponents) {
+        Entry(long dayKey, long[] earned, Map<UUID, Integer> opponents) {
             this.dayKey = dayKey;
-            this.earnedToday = earnedToday;
+            this.earned = normalize(earned);
             this.opponents = new HashMap<>(opponents);
+        }
+
+        private static long[] normalize(long[] earned) {
+            long[] out = new long[3];
+            if (earned != null) {
+                System.arraycopy(earned, 0, out, 0, Math.min(3, earned.length));
+            }
+            return out;
         }
 
         static final Codec<Entry> CODEC = RecordCodecBuilder.create(i -> i.group(
             Codec.LONG.fieldOf("day").forGetter(e -> e.dayKey),
-            Codec.LONG.fieldOf("earned").forGetter(e -> e.earnedToday),
+            Codec.LONG.listOf().optionalFieldOf("earned", List.of()).forGetter(e -> List.of(e.earned[0], e.earned[1], e.earned[2])),
             Codec.unboundedMap(UUIDUtil.STRING_CODEC, Codec.INT).optionalFieldOf("opp", Map.of()).forGetter(e -> e.opponents)
-        ).apply(i, Entry::new));
+        ).apply(i, (day, earnedList, opp) -> new Entry(day, earnedList.stream().mapToLong(Long::longValue).toArray(), opp)));
     }
 }
