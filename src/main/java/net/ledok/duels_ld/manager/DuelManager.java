@@ -327,14 +327,6 @@ public class DuelManager {
         player2.sendSystemMessage(Component.translatable("duels_ld.duel.starting_soon", 10));
     }
 
-    public static void startChallengeDuel(ServerPlayer challenger, ServerPlayer target, DuelSettings settings, net.ledok.duels_ld.wager.Wager wager) {
-        startDuel(challenger, target, settings);
-        ActiveDuel duel = getDuel(challenger);
-        if (duel != null && wager != null && !wager.isNone()) {
-            duel.setWager(wager);
-        }
-    }
-
     public static void startMatchmakingDuel(ServerPlayer player1, ServerPlayer player2, DuelSettings settings, ArenaManager.Arena arena, ArenaManager.SpawnPoint spawn1, ArenaManager.SpawnPoint spawn2) {
         Vec3 pos1 = spawn1.center();
         Vec3 pos2 = spawn2.center();
@@ -671,44 +663,6 @@ public class DuelManager {
 
         if (duel.getArenaName() != null) {
             ArenaManager.markInactive(duel.getArenaName());
-        }
-
-        settleWager(duel, draw, winnerUUID);
-    }
-
-    private static void settleWager(ActiveDuel duel, boolean draw, UUID winnerUUID) {
-        net.ledok.duels_ld.wager.Wager wager = duel.getWager();
-        if (wager == null || wager.isNone()) {
-            return;
-        }
-        if (!net.ledok.duels_ld.wager.EconomyBridge.isAvailable()) {
-            return;
-        }
-        UUID p1 = duel.getPlayer1();
-        UUID p2 = duel.getPlayer2();
-        switch (wager.getKind()) {
-            case CURRENCY -> {
-                long each = wager.getCurrencyAmount();
-                if (draw || winnerUUID == null) {
-                    net.ledok.duels_ld.wager.EconomyBridge.refundCurrency(p1, each, "DUEL_DRAW_REFUND");
-                    net.ledok.duels_ld.wager.EconomyBridge.refundCurrency(p2, each, "DUEL_DRAW_REFUND");
-                } else {
-                    long pot = each * 2L;
-                    int tax = MatchmakingConfigManager.getConfig().currencyWagerTaxPercent;
-                    net.ledok.duels_ld.wager.EconomyBridge.payCurrencyToWinner(null, winnerUUID, pot, tax);
-                }
-            }
-            case ITEM -> {
-                int count = wager.getItemCount();
-                if (draw || winnerUUID == null) {
-                    net.ledok.duels_ld.wager.EconomyBridge.deliverItemSafe(p1, wager.getItemTemplate(), count, "DUEL_DRAW_REFUND");
-                    net.ledok.duels_ld.wager.EconomyBridge.deliverItemSafe(p2, wager.getItemTemplate(), count, "DUEL_DRAW_REFUND");
-                } else {
-                    net.ledok.duels_ld.wager.EconomyBridge.deliverItemSafe(winnerUUID, wager.getItemTemplate(), count * 2, "DUEL_WIN");
-                }
-            }
-            case NONE -> {
-            }
         }
     }
 

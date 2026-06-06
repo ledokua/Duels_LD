@@ -28,7 +28,6 @@ public class ActiveDuel {
     private String arenaName;
     private boolean matchmaking;
     private volatile EndRequest pendingEndRequest;
-    private net.ledok.duels_ld.wager.Wager wager;
 
     // Disconnect grace / timer pausing. disconnectedAt holds wall-clock ms of each offline player;
     // pausedMs is the total time the duel was paused while someone was reconnecting (subtracted
@@ -136,14 +135,6 @@ public class ActiveDuel {
 
     public void setMatchmaking(boolean matchmaking) {
         this.matchmaking = matchmaking;
-    }
-
-    public net.ledok.duels_ld.wager.Wager getWager() {
-        return wager;
-    }
-
-    public void setWager(net.ledok.duels_ld.wager.Wager wager) {
-        this.wager = wager;
     }
 
     private final Map<UUID, Float> spawnYaw = new ConcurrentHashMap<>();

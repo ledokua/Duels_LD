@@ -13,7 +13,6 @@ import net.ledok.duels_ld.manager.MatchmakingManager;
 import net.ledok.duels_ld.manager.MMRManager;
 import net.ledok.duels_ld.manager.PartyManager;
 import net.ledok.duels_ld.manager.StatsManager;
-import net.ledok.duels_ld.wager.ChallengeManager;
 import net.ledok.duels_ld.network.JoinQueuePayload;
 import net.ledok.duels_ld.network.LeaveQueuePayload;
 import net.ledok.duels_ld.network.OpenAdminGuiPayload;
@@ -64,7 +63,6 @@ public class DuelsLdMod implements ModInitializer {
 
         DuelManager.init();
         MatchmakingManager.init();
-        ChallengeManager.init();
         net.ledok.duels_ld.manager.ArenaWand.register();
         net.ledok.duels_ld.manager.ArenaGuiHandler.register();
         if (FabricLoader.getInstance().isModLoaded("placeholder-api")) {
