@@ -152,9 +152,6 @@ public class ActiveTeamDuel {
         return teamNameBase;
     }
 
-    public float getStartHealth(UUID player) {
-        return startHealth.getOrDefault(player, 20.0f);
-    }
 
     public MatchPoints getPoints(UUID player) {
         return points.computeIfAbsent(player, k -> new MatchPoints());

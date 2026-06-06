@@ -17,9 +17,6 @@ public class ActiveDuel {
     private int countdownSeconds = 10;
     private int countdownTicks = 0;
     private String teamName;
-    
-    private float player1StartHp;
-    private float player2StartHp;
 
     private final Map<UUID, MatchPoints> points = new ConcurrentHashMap<>();
     private final Map<UUID, Float> lastHealth = new ConcurrentHashMap<>();
@@ -42,8 +39,6 @@ public class ActiveDuel {
         this.settings = settings;
         this.teamName = teamName;
         this.isCountdown = true;
-        this.player1StartHp = p1Hp;
-        this.player2StartHp = p2Hp;
 
         points.put(player1, new MatchPoints());
         points.put(player2, new MatchPoints());
@@ -111,14 +106,6 @@ public class ActiveDuel {
 
     public String getTeamName() {
         return teamName;
-    }
-    
-    public float getPlayer1StartHp() {
-        return player1StartHp;
-    }
-    
-    public float getPlayer2StartHp() {
-        return player2StartHp;
     }
 
     public String getArenaName() {
