@@ -119,7 +119,9 @@ public class DuelCommand {
                 .then(Commands.literal("wand")
                     .then(Commands.argument("name", StringArgumentType.word())
                         .suggests(DuelCommand::suggestArenaNames)
-                        .executes(DuelCommand::arenaWand))))
+                        .executes(DuelCommand::arenaWand)))
+                .then(Commands.literal("gui")
+                    .executes(DuelCommand::arenaGui)))
             );
     }
 
@@ -437,6 +439,12 @@ public class DuelCommand {
         ArenaWand.give(player, name);
         ArenaWand.sendOverlay(player, name);
         context.getSource().sendSuccess(() -> Component.translatable("duels_ld.command.arena.wand_given", name).withStyle(ChatFormatting.LIGHT_PURPLE), false);
+        return 1;
+    }
+
+    private static int arenaGui(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        ServerPlayer player = context.getSource().getPlayerOrException();
+        net.ledok.duels_ld.manager.ArenaGuiHandler.sendArenaList(player, true);
         return 1;
     }
 

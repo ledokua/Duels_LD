@@ -12,6 +12,7 @@ import net.ledok.duels_ld.network.SyncMatchmakingSettingsPayload;
 import net.ledok.duels_ld.network.SyncEloPayload;
 import net.ledok.duels_ld.network.SyncPartyPayload;
 import net.ledok.duels_ld.network.ArenaOverlayPayload;
+import net.ledok.duels_ld.network.ArenaListPayload;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.glfw.GLFW;
@@ -67,6 +68,10 @@ public class DuelsLdModClient implements ClientModInitializer {
 
         ClientPlayNetworking.registerGlobalReceiver(ArenaOverlayPayload.TYPE, (payload, context) -> {
             context.client().execute(() -> ArenaOverlayRenderer.setSnapshot(payload));
+        });
+
+        ClientPlayNetworking.registerGlobalReceiver(ArenaListPayload.TYPE, (payload, context) -> {
+            context.client().execute(() -> ArenaManagerScreen.apply(payload.open(), payload.arenas()));
         });
 
         ArenaOverlayRenderer.register();
