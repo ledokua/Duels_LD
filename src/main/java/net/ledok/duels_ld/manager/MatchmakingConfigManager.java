@@ -77,10 +77,31 @@ public class MatchmakingConfigManager {
         public int mmrRangeIncrease = 50;
         public int mmrRangeIncreaseSeconds = 15;
         public int mmrRangeMax = 400;
+        public RewardConfig rewards = new RewardConfig();
 
         public static MatchmakingConfig defaults() {
             return new MatchmakingConfig();
         }
+    }
+
+    /** Currency rewards for matchmade battles (paid via Economy_LD), with anti-farm limits. */
+    public static class RewardConfig {
+        public boolean enabled = true;
+        public long winReward = 100;
+        public long lossReward = 25;
+        public long drawReward = 40;
+        // Quality gate: no reward below minDurationSeconds; the reward ramps linearly to full at
+        // fullRewardSeconds (so AFK / instant-forfeit matches pay little or nothing).
+        public int minDurationSeconds = 20;
+        public int fullRewardSeconds = 60;
+        // Hard ceiling on battle currency a player can earn per day.
+        public long dailyCap = 1000;
+        // Each repeat match vs the same opponent (within a day) multiplies the reward by this %.
+        public int sameOpponentDecayPercent = 50;
+        // Win Elo gain at which the gate factor is 1.0; smaller gains (stomping weak opponents)
+        // scale down to eloGateMinPercent.
+        public int eloGateReferenceGain = 16;
+        public int eloGateMinPercent = 20;
     }
 
     public static class MatchSettings {

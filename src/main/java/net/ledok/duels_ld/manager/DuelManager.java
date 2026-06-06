@@ -663,9 +663,10 @@ public class DuelManager {
                 player2.sendSystemMessage(Component.translatable("duels_ld.duel.draw"));
                 StatsManager.recordDraw(player2.getUUID());
             }
+            BattleRewards.awardDuel(server, duel, true, null, null, 0, 0);
         } else if (winnerUUID != null) {
             UUID loserUUID = duel.getPlayer1().equals(winnerUUID) ? duel.getPlayer2() : duel.getPlayer1();
-            
+
             StatsManager.recordWin(winnerUUID);
             StatsManager.recordLoss(loserUUID);
 
@@ -682,6 +683,7 @@ public class DuelManager {
                 if (loser != null) {
                     loser.sendSystemMessage(Component.translatable("duels_ld.duel.loss_elo", formatEloDelta(delta.loserDelta)));
                 }
+                BattleRewards.awardDuel(server, duel, false, winnerUUID, loserUUID, delta.winnerDelta, delta.loserDelta);
             } else {
                 ServerPlayer winner = server.getPlayerList().getPlayer(winnerUUID);
                 ServerPlayer loser = server.getPlayerList().getPlayer(loserUUID);
@@ -730,6 +732,7 @@ public class DuelManager {
                     player.sendSystemMessage(Component.translatable("duels_ld.duel.draw"));
                 }
             }
+            BattleRewards.awardTeamDuel(server, duel, true, List.of(), List.of(), 0, 0);
         } else {
             List<UUID> winners = winningTeam == 1 ? duel.getTeam1() : duel.getTeam2();
             List<UUID> losers = winningTeam == 1 ? duel.getTeam2() : duel.getTeam1();
@@ -755,6 +758,7 @@ public class DuelManager {
                         player.sendSystemMessage(Component.translatable("duels_ld.duel.loss_elo", formatEloDelta(delta.loserDelta)));
                     }
                 }
+                BattleRewards.awardTeamDuel(server, duel, false, winners, losers, delta.winnerDelta, delta.loserDelta);
             } else {
                 for (UUID id : winners) {
                     ServerPlayer player = server.getPlayerList().getPlayer(id);

@@ -16,6 +16,7 @@
   "duels_ld.duel.opponent_disconnected": "%s disconnected — %s seconds to reconnect.",
   "duels_ld.duel.opponent_reconnected": "%s reconnected.",
   "duels_ld.duel.reconnected": "You reconnected to your duel.",
+  "duels_ld.reward.earned": "You earned %s from the battle.",
 
   "duels_ld.matchmaking.cannot_queue_busy": "You cannot queue while busy or in a match.",
   "duels_ld.matchmaking.cannot_open_busy": "You cannot open matchmaking while busy or in a match.",
