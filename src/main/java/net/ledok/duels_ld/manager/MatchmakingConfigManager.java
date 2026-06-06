@@ -69,14 +69,19 @@ public class MatchmakingConfigManager {
     }
 
     public static class MatchmakingConfig {
+        // ── Match formats ───────────────────────────────────────────────
         public MatchSettings oneVOne = new MatchSettings(DuelSettings.DEFAULT_DURATION_SECONDS, 0);
         public MatchSettings twoVTwo = new MatchSettings(DuelSettings.DEFAULT_DURATION_SECONDS, 0);
-        public PointWeights weights = new PointWeights(1.0, 1.0, 1.0, 5.0);
+
+        // ── Rating & matchmaking ────────────────────────────────────────
         public EloSettings elo = new EloSettings(32, 1000);
         public int mmrRangeStart = 100;
         public int mmrRangeIncrease = 50;
         public int mmrRangeIncreaseSeconds = 15;
         public int mmrRangeMax = 400;
+
+        // ── Scoring & rewards ───────────────────────────────────────────
+        public PointWeights weights = new PointWeights(1.0, 1.0, 1.0, 5.0);
         public RewardConfig rewards = new RewardConfig();
 
         public static MatchmakingConfig defaults() {
