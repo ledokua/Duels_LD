@@ -19,11 +19,7 @@ public abstract class PlayerDropMixin {
         cancellable = true
     )
     private void duelsld$blockDropShort(ItemStack stack, boolean throwRandomly, CallbackInfoReturnable<ItemEntity> cir) {
-        if (shouldBlockDrop()) {
-            if (!stack.isEmpty() && (Object) this instanceof ServerPlayer player) {
-                player.getInventory().placeItemBackInInventory(stack);
-                player.containerMenu.broadcastChanges();
-            }
+        if (shouldBlockDrop() && keepInInventory(stack)) {
             cir.setReturnValue(null);
         }
     }
@@ -34,11 +30,7 @@ public abstract class PlayerDropMixin {
         cancellable = true
     )
     private void duelsld$blockDrop(ItemStack stack, boolean throwRandomly, boolean retainOwnership, CallbackInfoReturnable<ItemEntity> cir) {
-        if (shouldBlockDrop()) {
-            if (!stack.isEmpty() && (Object) this instanceof ServerPlayer player) {
-                player.getInventory().placeItemBackInInventory(stack);
-                player.containerMenu.broadcastChanges();
-            }
+        if (shouldBlockDrop() && keepInInventory(stack)) {
             cir.setReturnValue(null);
         }
     }
@@ -52,6 +44,27 @@ public abstract class PlayerDropMixin {
         if (shouldBlockDrop()) {
             ci.cancel();
         }
+    }
+
+    /**
+     * Tries to put a blocked drop back into the player's inventory. Uses {@link
+     * net.minecraft.world.entity.player.Inventory#add} rather than placeItemBackInInventory,
+     * because the latter falls back to {@code player.drop(...)} when the inventory is full,
+     * which would re-enter these injectors and recurse until a StackOverflowError.
+     *
+     * @return true if the whole stack was stored (so the drop can be cancelled). If false, the
+     *         inventory was full; we let vanilla drop the leftover instead of looping forever.
+     */
+    private boolean keepInInventory(ItemStack stack) {
+        if (stack.isEmpty()) {
+            return true;
+        }
+        if (!((Object) this instanceof ServerPlayer player)) {
+            return true;
+        }
+        boolean fullyStored = player.getInventory().add(stack);
+        player.containerMenu.broadcastChanges();
+        return fullyStored;
     }
 
     private boolean shouldBlockDrop() {
