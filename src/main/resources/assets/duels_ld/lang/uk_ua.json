@@ -16,6 +16,8 @@
   "duels_ld.duel.opponent_disconnected": "%s від'єднався — %s секунд на перепідключення.",
   "duels_ld.duel.opponent_reconnected": "%s перепідключився.",
   "duels_ld.duel.reconnected": "Ви повернулися до дуелі.",
+  "duels_ld.duel.item_blocked": "Цей предмет не можна використовувати на арені.",
+  "duels_ld.duel.post_match_teleport_blocked": "Телепортація назад на арену заблокована після бою.",
   "duels_ld.reward.earned": "Ви отримали %s за бій.",
 
   "duels_ld.matchmaking.cannot_queue_busy": "Ви не можете стати в чергу, коли зайняті або в бою.",

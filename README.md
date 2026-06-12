@@ -88,7 +88,9 @@ Persistence uses Minecraft's SavedData, stored under the world folder:
 5. `world/data/duels_ld/rewards.dat` — daily reward tallies.
 6. `config/duels_ld/matchmaking_config.json` — config (JSON; `/duel reload` re-reads it).
 
-The config is grouped into sections: match formats (`oneVOne`, `twoVTwo`), `battle` (countdown, reconnect grace, heal-at-start, in-battle game mode), rating/matchmaking (`elo`, MMR range), scoring `weights`, and `rewards` (amounts, quality ramp, daily caps, anti-farm).
+The config is grouped into sections: match formats (`oneVOne`, `twoVTwo`), `battle` (countdown, reconnect grace, heal-at-start, in-battle game mode, item blacklist, post-match teleport guard), rating/matchmaking (`elo`, MMR range), scoring `weights`, and `rewards` (amounts, quality ramp, daily caps, anti-farm).
+
+The `battle.arenaItemBlacklist` blocks listed items from being used during a match (and for `itemBlacklistGraceSeconds` after). Entries are item ids (e.g. `minecraft:ender_pearl`) or item tags prefixed with `#`. A delayed teleport (e.g. an ender pearl thrown right before the match ends) that would pull a player back into the arena is undone for `postMatchTeleportGuardSeconds` after the match.
 
 ## Placeholders (Placeholder API + HoloDisplays)
 

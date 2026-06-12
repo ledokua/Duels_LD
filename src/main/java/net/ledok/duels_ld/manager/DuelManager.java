@@ -20,6 +20,9 @@ import net.minecraft.world.BossEvent;
 import net.minecraft.world.damagesource.CombatRules;
 import net.minecraft.world.level.GameType;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
@@ -35,6 +38,10 @@ public class DuelManager {
     private static final String DUEL_TEAM_PREFIX = "duel_team_";
     private static final Map<UUID, Long> lastBoundsTeleport = new ConcurrentHashMap<>();
     private static final long BOUNDS_TELEPORT_COOLDOWN_MS = 2000;
+    // Players whose match just ended, tracked briefly so the item blacklist keeps applying and so a
+    // delayed teleport (e.g. an ender pearl thrown right before the end) can't drag them back in.
+    private static final Map<UUID, PostMatch> recentlyEnded = new ConcurrentHashMap<>();
+    private record PostMatch(long endedAt, ResourceKey<Level> dimension, Vec3 returnPos, float yaw, float pitch, String arenaName) {}
     private static final double COUNTDOWN_FREEZE_THRESHOLD_SQR = 0.25;
     private static final double SPECTATOR_LEASH_RADIUS = 8.0;
 
@@ -107,14 +114,22 @@ public class DuelManager {
         });
 
         UseItemCallback.EVENT.register((player, world, hand) -> {
-            if (player instanceof ServerPlayer serverPlayer && isInDuel(serverPlayer)) {
-                ActiveTeamDuel teamDuel = getTeamDuel(serverPlayer);
-                if (teamDuel != null && teamDuel.isCountdown()) {
-                    return InteractionResultHolder.fail(player.getItemInHand(hand));
+            if (player instanceof ServerPlayer serverPlayer) {
+                ItemStack held = player.getItemInHand(hand);
+                if (isInDuel(serverPlayer)) {
+                    ActiveTeamDuel teamDuel = getTeamDuel(serverPlayer);
+                    if (teamDuel != null && teamDuel.isCountdown()) {
+                        return InteractionResultHolder.fail(held);
+                    }
+                    ActiveDuel duel = getDuel(serverPlayer);
+                    if (duel != null && duel.isCountdown()) {
+                        return InteractionResultHolder.fail(held);
+                    }
                 }
-                ActiveDuel duel = getDuel(serverPlayer);
-                if (duel != null && duel.isCountdown()) {
-                    return InteractionResultHolder.fail(player.getItemInHand(hand));
+                if (isUnderArenaItemRestriction(serverPlayer) && ArenaItemRules.isBlacklisted(held)) {
+                    serverPlayer.displayClientMessage(
+                        Component.translatable("duels_ld.duel.item_blocked").withStyle(ChatFormatting.RED), true);
+                    return InteractionResultHolder.fail(held);
                 }
             }
             return InteractionResultHolder.pass(player.getItemInHand(hand));
@@ -281,6 +296,8 @@ public class DuelManager {
     private static void startDuel(ServerPlayer player1, ServerPlayer player2, DuelSettings settings) {
         ActivityManager.setPlayerBusy(player1.getUUID());
         ActivityManager.setPlayerBusy(player2.getUUID());
+        recentlyEnded.remove(player1.getUUID());
+        recentlyEnded.remove(player2.getUUID());
         
         Scoreboard scoreboard = player1.getScoreboard();
         String teamName = buildTeamBaseName(scoreboard);
@@ -381,6 +398,9 @@ public class DuelManager {
         ActivityManager.setPlayerBusy(p2.getUUID());
         ActivityManager.setPlayerBusy(p3.getUUID());
         ActivityManager.setPlayerBusy(p4.getUUID());
+        for (UUID id : List.of(p1.getUUID(), p2.getUUID(), p3.getUUID(), p4.getUUID())) {
+            recentlyEnded.remove(id);
+        }
 
         Scoreboard scoreboard = server.getScoreboard();
         String teamName = buildTeamBaseName(scoreboard);
@@ -494,6 +514,7 @@ public class DuelManager {
             }
         }
         activeTeamDuels.clear();
+        recentlyEnded.clear();
     }
 
     private static void onServerTick(MinecraftServer server) {
@@ -592,6 +613,7 @@ public class DuelManager {
         }
 
         processActiveTeamDuels(server, currentTime);
+        processRecentlyEnded(server, currentTime);
     }
     
     public static boolean isInDuel(ServerPlayer player) {
@@ -639,6 +661,9 @@ public class DuelManager {
 
         restorePlayer(player1, duel.isMatchmaking());
         restorePlayer(player2, duel.isMatchmaking());
+
+        recordMatchEnd(player1, duel.getArenaName());
+        recordMatchEnd(player2, duel.getArenaName());
 
         if (draw) {
             if (player1 != null) {
@@ -708,6 +733,7 @@ public class DuelManager {
         for (UUID id : allPlayers) {
             ServerPlayer player = server.getPlayerList().getPlayer(id);
             restorePlayer(player, duel.isMatchmaking());
+            recordMatchEnd(player, duel.getArenaName());
         }
 
         if (draw) {
@@ -1345,5 +1371,97 @@ public class DuelManager {
         if (level != null) {
             player.teleportTo(level, spawn.x, spawn.y, spawn.z, duel.getSpawnYaw(player.getUUID()), duel.getSpawnPitch(player.getUUID()));
         }
+    }
+
+    private static long itemBlacklistGraceMs() {
+        return Math.max(0, MatchmakingConfigManager.getConfig().battle.itemBlacklistGraceSeconds) * 1000L;
+    }
+
+    private static long postMatchTeleportGuardMs() {
+        return Math.max(0, MatchmakingConfigManager.getConfig().battle.postMatchTeleportGuardSeconds) * 1000L;
+    }
+
+    /** Records where a player was returned to after a match so the post-match guard can re-place them. */
+    private static void recordMatchEnd(ServerPlayer player, String arenaName) {
+        if (player == null) {
+            return;
+        }
+        recentlyEnded.put(player.getUUID(), new PostMatch(
+            System.currentTimeMillis(),
+            player.level().dimension(),
+            player.position(),
+            player.getYRot(),
+            player.getXRot(),
+            arenaName));
+    }
+
+    /** True while a player is in an arena match, or still within the blacklist grace after one ended. */
+    private static boolean isUnderArenaItemRestriction(ServerPlayer player) {
+        if (isPlayerInArena(player)) {
+            return true;
+        }
+        PostMatch pm = recentlyEnded.get(player.getUUID());
+        return pm != null && System.currentTimeMillis() - pm.endedAt() < itemBlacklistGraceMs();
+    }
+
+    /**
+     * Watches players whose match recently ended: if a delayed teleport pulls one back inside the
+     * arena bounds within the guard window, send them back to where they were returned. Entries are
+     * dropped once both the blacklist grace and the teleport guard windows have elapsed.
+     */
+    private static void processRecentlyEnded(MinecraftServer server, long now) {
+        if (recentlyEnded.isEmpty()) {
+            return;
+        }
+        long guardMs = postMatchTeleportGuardMs();
+        long maxMs = Math.max(guardMs, itemBlacklistGraceMs());
+        Iterator<Map.Entry<UUID, PostMatch>> it = recentlyEnded.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<UUID, PostMatch> entry = it.next();
+            PostMatch pm = entry.getValue();
+            if (now - pm.endedAt() >= maxMs) {
+                it.remove();
+                continue;
+            }
+            ServerPlayer player = server.getPlayerList().getPlayer(entry.getKey());
+            if (player == null) {
+                continue;
+            }
+            if (isInDuel(player)) {
+                it.remove();
+                continue;
+            }
+            if (guardMs <= 0 || now - pm.endedAt() >= guardMs || pm.arenaName() == null) {
+                continue;
+            }
+            ArenaManager.Arena arena = ArenaManager.getArena(pm.arenaName());
+            if (arena == null || arena.pos1 == null || arena.pos2 == null) {
+                continue;
+            }
+            if (isInsideArenaBounds(player, arena)) {
+                ServerLevel level = server.getLevel(pm.dimension());
+                if (level != null) {
+                    player.teleportTo(level, pm.returnPos().x, pm.returnPos().y, pm.returnPos().z, pm.yaw(), pm.pitch());
+                    player.displayClientMessage(
+                        Component.translatable("duels_ld.duel.post_match_teleport_blocked").withStyle(ChatFormatting.YELLOW), true);
+                }
+            }
+        }
+    }
+
+    private static boolean isInsideArenaBounds(ServerPlayer player, ArenaManager.Arena arena) {
+        if (!player.level().dimension().equals(arena.getDimensionKey())) {
+            return false;
+        }
+        double minX = Math.min(arena.pos1.getX(), arena.pos2.getX());
+        double maxX = Math.max(arena.pos1.getX(), arena.pos2.getX()) + 1;
+        double minY = Math.min(arena.pos1.getY(), arena.pos2.getY());
+        double maxY = Math.max(arena.pos1.getY(), arena.pos2.getY()) + 1;
+        double minZ = Math.min(arena.pos1.getZ(), arena.pos2.getZ());
+        double maxZ = Math.max(arena.pos1.getZ(), arena.pos2.getZ()) + 1;
+        double x = player.getX();
+        double y = player.getY();
+        double z = player.getZ();
+        return x >= minX && x <= maxX && y >= minY && y <= maxY && z >= minZ && z <= maxZ;
     }
 }

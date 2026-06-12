@@ -111,6 +111,17 @@ public class MatchmakingConfigManager {
         public boolean healAndFeedAtStart = true;
         // Game mode applied during a battle (e.g. ADVENTURE or SURVIVAL for block-breaking arenas).
         public String inBattleGameMode = "ADVENTURE";
+        // Items that may not be used during an arena match. Entries are item ids
+        // (e.g. "minecraft:ender_pearl") or item tags prefixed with '#' (e.g. "#minecraft:beds").
+        public java.util.List<String> arenaItemBlacklist = new java.util.ArrayList<>(java.util.List.of(
+            "minecraft:ender_pearl",
+            "minecraft:chorus_fruit"
+        ));
+        // Keep enforcing the blacklist this long after a match ends (blocks last-second use).
+        public int itemBlacklistGraceSeconds = 2;
+        // After a match ends, if a delayed teleport (e.g. an ender pearl thrown right before the end)
+        // pulls a player back inside the arena within this window, teleport them back out.
+        public int postMatchTeleportGuardSeconds = 5;
     }
 
     /** Currency rewards for matchmade battles (paid via Economy_LD), with anti-farm limits. */
