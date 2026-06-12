@@ -134,6 +134,9 @@ public class MatchmakingConfigManager {
         // fullRewardSeconds (so AFK / instant-forfeit matches pay little or nothing).
         public int minDurationSeconds = 20;
         public int fullRewardSeconds = 60;
+        // A drawn match pays nothing unless the combined points (offense + defense + support) of all
+        // participants reach this, so standing still until the timer (a 0-0 stalemate) earns nothing.
+        public double drawMinPoints = 10.0;
         // Hard ceiling on battle currency a player can earn per day, per outcome.
         public long winDailyCap = 800;
         public long lossDailyCap = 150;

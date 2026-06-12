@@ -57,6 +57,9 @@ public final class BattleRewards {
         if (durationSec < cfg.minDurationSeconds) {
             return; // quality gate: instant-forfeit / AFK pays nothing
         }
+        if (outcome == Outcome.DRAW && match.totalPoints() < cfg.drawMinPoints) {
+            return; // stalemate draw: nobody did enough for the draw to pay out
+        }
         long base = switch (outcome) {
             case WIN -> cfg.winReward;
             case LOSS -> cfg.lossReward;

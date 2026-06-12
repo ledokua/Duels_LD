@@ -82,6 +82,15 @@ public abstract class ActiveMatch {
         return delta;
     }
 
+    /** Sum of every participant's accumulated points — a proxy for how much actually happened. */
+    public double totalPoints() {
+        double total = 0.0;
+        for (Participant p : participants.values()) {
+            total += p.points.getTotal();
+        }
+        return total;
+    }
+
     // ── Per-player state ───────────────────────────────────────────────────
     public MatchPoints getPoints(UUID player) { return participant(player).points; }
 

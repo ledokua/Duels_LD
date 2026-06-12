@@ -44,8 +44,9 @@ Fabric (1.21.1) mod that adds matchmade PvP battles in arenas: 1v1/2v2 queues, E
 1. Currency paid out for win/loss/draw outcomes.
 2. Reward is quality-scaled by match duration (AFK / instant-forfeit matches pay little to nothing).
 3. Anti-farm limits: per-outcome daily caps, repeat-opponent decay, and an Elo gate that scales down rewards for stomping much weaker opponents.
-4. Today's earned amount and remaining cap are shown on the matchmaking screen.
-5. If Economy_LD is not installed, rewards are silently disabled.
+4. A drawn match where nothing happened (a 0-0 stalemate below `drawMinPoints`) pays nothing.
+5. Today's earned amount and remaining cap are shown on the matchmaking screen.
+6. If Economy_LD is not installed, rewards are silently disabled.
 
 ### GUI
 1. Lobby/matchmaking screen (`B` keybind) — shows Elo, queue timers, party invite/accept, and coins earned today.
