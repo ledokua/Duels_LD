@@ -16,7 +16,7 @@ Fabric (1.21.1) mod that adds matchmade PvP battles in arenas: 1v1/2v2 queues, E
 1. WorldEdit-style `pos1`/`pos2` bounds per arena.
 2. Multiple team spawns per team with captured facing (yaw/pitch); a random spawn is chosen per match.
 3. Arena is locked while active; players are teleported back after the match.
-4. Players who leave the arena bounds are returned to their spawn.
+4. Players who leave the arena bounds are returned to their spawn, and take a configurable HP + match-point penalty (deters using out-of-bounds to escape to spawn).
 5. Selection **wand** with a live block overlay and shift+scroll mode switching (bounds / spawns), plus a shift+RMB arena selection/rename screen.
 6. `/duel arena gui` opens an arena manager screen; `/duel arena info <name>` prints a readiness summary.
 
@@ -50,7 +50,7 @@ Fabric (1.21.1) mod that adds matchmade PvP battles in arenas: 1v1/2v2 queues, E
 
 ### GUI
 1. Lobby/matchmaking screen (`B` keybind) — shows Elo, queue timers, party invite/accept, and coins earned today.
-2. Admin GUI for matchmaking settings (`/duel admingui`).
+2. Admin GUI for matchmaking settings (`/duel admingui`) — durations, win-HP, scoring weights, and the out-of-bounds penalty.
 3. Arena manager screen (`/duel arena gui`).
 
 ## Commands

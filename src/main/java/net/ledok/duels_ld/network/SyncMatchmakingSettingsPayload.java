@@ -14,7 +14,9 @@ public record SyncMatchmakingSettingsPayload(
     double offensePerDamage,
     double supportPerHeal,
     double defensePerBlocked,
-    double killBonus
+    double killBonus,
+    double outOfBoundsDamagePercent,
+    double outOfBoundsPointPenaltyPercent
 ) implements CustomPacketPayload {
     public static final Type<SyncMatchmakingSettingsPayload> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(DuelsLdMod.MOD_ID, "sync_matchmaking_settings"));
 
@@ -28,12 +30,16 @@ public record SyncMatchmakingSettingsPayload(
             buf.writeDouble(val.supportPerHeal);
             buf.writeDouble(val.defensePerBlocked);
             buf.writeDouble(val.killBonus);
+            buf.writeDouble(val.outOfBoundsDamagePercent);
+            buf.writeDouble(val.outOfBoundsPointPenaltyPercent);
         },
         buf -> new SyncMatchmakingSettingsPayload(
             buf.readInt(),
             buf.readInt(),
             buf.readInt(),
             buf.readInt(),
+            buf.readDouble(),
+            buf.readDouble(),
             buf.readDouble(),
             buf.readDouble(),
             buf.readDouble(),

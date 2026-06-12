@@ -20,4 +20,11 @@ public class MatchPoints {
     public double getTotal() {
         return offense + support + defense;
     }
+
+    /** Multiplies every component by {@code factor} (e.g. 0.75 to dock 25% of the player's points). */
+    public void scale(double factor) {
+        offense *= factor;
+        support *= factor;
+        defense *= factor;
+    }
 }

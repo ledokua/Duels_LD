@@ -198,6 +198,8 @@ public class MatchmakingManager {
         double sup = Math.max(0.0, payload.supportPerHeal());
         double def = Math.max(0.0, payload.defensePerBlocked());
         double kill = Math.max(0.0, payload.killBonus());
+        double oobDamage = Math.max(0.0, Math.min(100.0, payload.outOfBoundsDamagePercent()));
+        double oobPoints = Math.max(0.0, Math.min(100.0, payload.outOfBoundsPointPenaltyPercent()));
 
         MatchmakingConfigManager.MatchmakingConfig current = MatchmakingConfigManager.getConfig();
         MatchmakingConfigManager.MatchmakingConfig config = new MatchmakingConfigManager.MatchmakingConfig();
@@ -214,6 +216,12 @@ public class MatchmakingManager {
         config.mmrRangeIncrease = current.mmrRangeIncrease;
         config.mmrRangeIncreaseSeconds = current.mmrRangeIncreaseSeconds;
         config.mmrRangeMax = current.mmrRangeMax;
+        // Preserve sections the GUI doesn't expose (otherwise saving would reset them to defaults),
+        // then apply the two out-of-bounds penalty fields that the GUI does edit.
+        config.battle = current.battle;
+        config.rewards = current.rewards;
+        config.battle.outOfBoundsDamagePercent = oobDamage;
+        config.battle.outOfBoundsPointPenaltyPercent = oobPoints;
 
         MatchmakingConfigManager.updateConfig(config);
         player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.settings_updated"));

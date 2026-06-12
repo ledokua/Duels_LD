@@ -1329,6 +1329,7 @@ public class DuelManager {
         }
         lastBoundsTeleport.put(player.getUUID(), now);
         teleportToSpawn(duel, arena, player);
+        punishOutOfBounds(duel, player);
     }
 
     private static void maybeTeleportToSpawn(ActiveTeamDuel duel, ArenaManager.Arena arena, ServerPlayer player) {
@@ -1339,6 +1340,38 @@ public class DuelManager {
         }
         lastBoundsTeleport.put(player.getUUID(), now);
         teleportToSpawn(duel, arena, player);
+        punishOutOfBounds(duel, player);
+    }
+
+    /**
+     * Penalizes a player who left the arena bounds (and was returned to spawn): deals a % of max HP
+     * as unblockable true damage and docks a % of their current match points. Both percentages are
+     * configurable (also via the admin GUI). The damage is floored at 1 HP so leaving the arena is
+     * never directly lethal, and is skipped during the pre-fight countdown.
+     */
+    private static void punishOutOfBounds(ActiveMatch match, ServerPlayer player) {
+        if (match.isCountdown()) {
+            return;
+        }
+        MatchmakingConfigManager.BattleConfig battle = MatchmakingConfigManager.getConfig().battle;
+        double damagePercent = Math.max(0.0, battle.outOfBoundsDamagePercent);
+        double pointPercent = Math.max(0.0, Math.min(100.0, battle.outOfBoundsPointPenaltyPercent));
+        if (damagePercent <= 0.0 && pointPercent <= 0.0) {
+            return;
+        }
+        if (damagePercent > 0.0) {
+            float damage = (float) (player.getMaxHealth() * (damagePercent / 100.0));
+            float newHealth = Math.max(1.0f, player.getHealth() - damage);
+            if (newHealth < player.getHealth()) {
+                player.setHealth(newHealth);
+                player.serverLevel().broadcastEntityEvent(player, (byte) 2); // hurt flash on clients
+            }
+        }
+        if (pointPercent > 0.0) {
+            match.getPoints(player.getUUID()).scale(1.0 - pointPercent / 100.0);
+        }
+        player.displayClientMessage(
+            Component.translatable("duels_ld.duel.out_of_bounds_penalty").withStyle(ChatFormatting.RED), true);
     }
 
     private static void teleportToSpawnPoint(ServerLevel level, ServerPlayer player, ArenaManager.SpawnPoint spawn) {

@@ -122,6 +122,11 @@ public class MatchmakingConfigManager {
         // After a match ends, if a delayed teleport (e.g. an ender pearl thrown right before the end)
         // pulls a player back inside the arena within this window, teleport them back out.
         public int postMatchTeleportGuardSeconds = 5;
+        // Penalty for leaving the arena bounds (deters using out-of-bounds to teleport to spawn).
+        // When a player is returned to their spawn for leaving, they take this % of their max health
+        // as unblockable true damage (never lethal) and lose this % of their current match points.
+        public double outOfBoundsDamagePercent = 10.0;
+        public double outOfBoundsPointPenaltyPercent = 25.0;
     }
 
     /** Currency rewards for matchmade battles (paid via Economy_LD), with anti-farm limits. */

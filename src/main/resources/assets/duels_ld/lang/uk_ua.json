@@ -18,6 +18,7 @@
   "duels_ld.duel.reconnected": "Ви повернулися до дуелі.",
   "duels_ld.duel.item_blocked": "Цей предмет не можна використовувати на арені.",
   "duels_ld.duel.post_match_teleport_blocked": "Телепортація назад на арену заблокована після бою.",
+  "duels_ld.duel.out_of_bounds_penalty": "Вихід з арени коштував вам здоров'я та балів!",
   "duels_ld.reward.earned": "Ви отримали %s за бій.",
 
   "duels_ld.matchmaking.cannot_queue_busy": "Ви не можете стати в чергу, коли зайняті або в бою.",
@@ -155,10 +156,14 @@
   "duels_ld.screen.matchmaking_admin.support_label": "підтримка / лікування:",
   "duels_ld.screen.matchmaking_admin.defense_label": "захист / блок:",
   "duels_ld.screen.matchmaking_admin.kill_bonus_label": "бонус за вбивство:",
+  "duels_ld.screen.matchmaking_admin.penalties_header": "Покарання за вихід з арени",
+  "duels_ld.screen.matchmaking_admin.out_of_bounds_damage_label": "Шкода (% макс. HP):",
+  "duels_ld.screen.matchmaking_admin.out_of_bounds_points_label": "Втрата балів (%):",
   "duels_ld.screen.matchmaking_admin.save": "Зберегти",
   "duels_ld.screen.matchmaking_admin.error_time_min": "Час має бути щонайменше 10 секунд.",
   "duels_ld.screen.matchmaking_admin.error_win_hp_range": "Win HP має бути від 0 до 100.",
   "duels_ld.screen.matchmaking_admin.error_points_non_negative": "Значення балів мають бути невід'ємними.",
+  "duels_ld.screen.matchmaking_admin.error_percent_range": "Відсотки покарання мають бути від 0 до 100.",
 
   "key.duels_ld.open_lobby": "Відкрити лобі",
   "duels_ld.placeholder.leaderboard_1v1_header": "Топ 10 Elo 1v1",

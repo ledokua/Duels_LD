@@ -49,6 +49,8 @@ public class MatchmakingAdminScreen extends BaseOwoScreen<FlowLayout> {
     private TextBoxComponent supportPerHeal;
     private TextBoxComponent defensePerBlocked;
     private TextBoxComponent killBonus;
+    private TextBoxComponent outOfBoundsDamage;
+    private TextBoxComponent outOfBoundsPoints;
 
     private LabelComponent errorLabel;
     private SyncMatchmakingSettingsPayload pendingSettings;
@@ -91,6 +93,12 @@ public class MatchmakingAdminScreen extends BaseOwoScreen<FlowLayout> {
         supportPerHeal = settingRow(content, "duels_ld.screen.matchmaking_admin.support_label");
         defensePerBlocked = settingRow(content, "duels_ld.screen.matchmaking_admin.defense_label");
         killBonus = settingRow(content, "duels_ld.screen.matchmaking_admin.kill_bonus_label");
+
+        content.child(spacer(8));
+        content.child(sectionHeader(Component.translatable("duels_ld.screen.matchmaking_admin.penalties_header")));
+        content.child(spacer(2));
+        outOfBoundsDamage = settingRow(content, "duels_ld.screen.matchmaking_admin.out_of_bounds_damage_label");
+        outOfBoundsPoints = settingRow(content, "duels_ld.screen.matchmaking_admin.out_of_bounds_points_label");
 
         ScrollContainer<FlowLayout> scroll = Containers.verticalScroll(Sizing.fill(100), Sizing.expand(), content);
         scroll.surface(Surface.flat(PANEL));
@@ -160,6 +168,8 @@ public class MatchmakingAdminScreen extends BaseOwoScreen<FlowLayout> {
         supportPerHeal.text(Double.toString(payload.supportPerHeal()));
         defensePerBlocked.text(Double.toString(payload.defensePerBlocked()));
         killBonus.text(Double.toString(payload.killBonus()));
+        outOfBoundsDamage.text(Double.toString(payload.outOfBoundsDamagePercent()));
+        outOfBoundsPoints.text(Double.toString(payload.outOfBoundsPointPenaltyPercent()));
     }
 
     private void save() {
@@ -171,6 +181,8 @@ public class MatchmakingAdminScreen extends BaseOwoScreen<FlowLayout> {
         double sup = parseDouble(supportPerHeal.getValue());
         double def = parseDouble(defensePerBlocked.getValue());
         double kill = parseDouble(killBonus.getValue());
+        double oobDmg = parseDouble(outOfBoundsDamage.getValue());
+        double oobPts = parseDouble(outOfBoundsPoints.getValue());
 
         if (v1Time < 10 || v2Time < 10) {
             setError("duels_ld.screen.matchmaking_admin.error_time_min");
@@ -184,12 +196,16 @@ public class MatchmakingAdminScreen extends BaseOwoScreen<FlowLayout> {
             setError("duels_ld.screen.matchmaking_admin.error_points_non_negative");
             return;
         }
+        if (oobDmg < 0 || oobDmg > 100 || oobPts < 0 || oobPts > 100) {
+            setError("duels_ld.screen.matchmaking_admin.error_percent_range");
+            return;
+        }
 
         if (errorLabel != null) {
             errorLabel.text(Component.empty());
         }
         ClientPlayNetworking.send(new UpdateMatchmakingSettingsPayload(
-            v1Time, v1Hp, v2Time, v2Hp, off, sup, def, kill
+            v1Time, v1Hp, v2Time, v2Hp, off, sup, def, kill, oobDmg, oobPts
         ));
     }
 
