@@ -24,8 +24,10 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
+import net.minecraft.core.Holder;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.InteractionResultHolder;
 
@@ -332,8 +334,8 @@ public class DuelManager {
         duel.getBossBar().addPlayer(player1);
         duel.getBossBar().addPlayer(player2);
 
-        healAndFeed(player1);
-        healAndFeed(player2);
+        prepareForBattle(player1);
+        prepareForBattle(player2);
 
         int countdown = duel.getInitialCountdownSeconds();
         player1.sendSystemMessage(Component.translatable("duels_ld.duel.starting_soon", countdown));
@@ -446,10 +448,10 @@ public class DuelManager {
         duel.getBossBar().addPlayer(p3);
         duel.getBossBar().addPlayer(p4);
 
-        healAndFeed(p1);
-        healAndFeed(p2);
-        healAndFeed(p3);
-        healAndFeed(p4);
+        prepareForBattle(p1);
+        prepareForBattle(p2);
+        prepareForBattle(p3);
+        prepareForBattle(p4);
 
         int countdown = duel.getInitialCountdownSeconds();
         for (ServerPlayer p : List.of(p1, p2, p3, p4)) {
@@ -610,6 +612,8 @@ public class DuelManager {
             }
             updateSupportPoints(duel, p1);
             updateSupportPoints(duel, p2);
+            enforceEffectBlacklist(p1);
+            enforceEffectBlacklist(p2);
         }
 
         processActiveTeamDuels(server, currentTime);
@@ -803,14 +807,33 @@ public class DuelManager {
             GameType.ADVENTURE);
     }
 
-    /** Heals + refills hunger if configured (so a battle starts everyone at full). */
-    private static void healAndFeed(ServerPlayer player) {
-        if (!MatchmakingConfigManager.getConfig().battle.healAndFeedAtStart) {
+    /** Start-of-battle player prep: clears effects and heals/feeds to full, each if configured. */
+    private static void prepareForBattle(ServerPlayer player) {
+        MatchmakingConfigManager.BattleConfig battle = MatchmakingConfigManager.getConfig().battle;
+        if (battle.clearEffectsAtStart) {
+            player.removeAllEffects();
+        }
+        if (battle.healAndFeedAtStart) {
+            player.setHealth(player.getMaxHealth());
+            player.getFoodData().setFoodLevel(20);
+            player.getFoodData().setSaturation(20.0f);
+        }
+    }
+
+    /** Strips any blacklisted potion/mob effects from a player (called each tick during a match). */
+    private static void enforceEffectBlacklist(ServerPlayer player) {
+        if (player == null) {
             return;
         }
-        player.setHealth(player.getMaxHealth());
-        player.getFoodData().setFoodLevel(20);
-        player.getFoodData().setSaturation(20.0f);
+        List<Holder<MobEffect>> blacklist = ArenaEffectRules.blacklistedEffects();
+        if (blacklist.isEmpty()) {
+            return;
+        }
+        for (Holder<MobEffect> effect : blacklist) {
+            if (player.hasEffect(effect)) {
+                player.removeEffect(effect);
+            }
+        }
     }
 
     private static boolean graceExpired(ActiveDuel duel, UUID id, long now) {
@@ -1213,6 +1236,7 @@ public class DuelManager {
                 duel.getPoints(playerId).addSupport((current - last) * weights.supportPerHeal);
             }
             duel.setLastHealth(playerId, current);
+            enforceEffectBlacklist(player);
         }
     }
 

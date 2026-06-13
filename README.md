@@ -23,7 +23,7 @@ Fabric (1.21.1) mod that adds matchmade PvP battles in arenas: 1v1/2v2 queues, E
 ### Battles
 1. Configurable pre-fight countdown, then FIGHT.
 2. Friendly fire disabled, colored teams, name tags hidden from other teams.
-3. Players are healed and fed at the start (configurable).
+3. Players are healed, fed, and cleared of all potion effects at the start (each configurable).
 4. Each player's HP is stored before the battle and restored afterward, so a battle is not a free heal.
 5. Configurable in-battle game mode (default ADVENTURE).
 6. Death is intercepted: the player is eliminated and moved to spectator; the last team standing wins.
@@ -91,7 +91,7 @@ Persistence uses Minecraft's SavedData, stored under the world folder:
 
 The config is grouped into sections: match formats (`oneVOne`, `twoVTwo`), `battle` (countdown, reconnect grace, heal-at-start, in-battle game mode, item blacklist, post-match teleport guard), rating/matchmaking (`elo`, MMR range), scoring `weights`, and `rewards` (amounts, quality ramp, daily caps, anti-farm).
 
-The `battle.arenaItemBlacklist` blocks listed items from being used during a match (and for `itemBlacklistGraceSeconds` after). Entries are item ids (e.g. `minecraft:ender_pearl`) or item tags prefixed with `#`. A delayed teleport (e.g. an ender pearl thrown right before the match ends) that would pull a player back into the arena is undone for `postMatchTeleportGuardSeconds` after the match.
+The `battle.arenaItemBlacklist` blocks listed items from being used during a match (and for `itemBlacklistGraceSeconds` after). Entries are item ids (e.g. `minecraft:ender_pearl`) or item tags prefixed with `#`. The `battle.arenaEffectBlacklist` strips listed potion/mob effects from players every tick during a match — entries are effect ids (e.g. `galosphere:astral`). A delayed teleport (e.g. an ender pearl thrown right before the match ends) that would pull a player back into the arena is undone for `postMatchTeleportGuardSeconds` after the match.
 
 ## Placeholders (Placeholder API + HoloDisplays)
 

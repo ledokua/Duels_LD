@@ -109,6 +109,8 @@ public class MatchmakingConfigManager {
         public int reconnectGraceSeconds = 60;
         // Heal players to full and refill hunger when the battle starts.
         public boolean healAndFeedAtStart = true;
+        // Remove every potion/mob effect from players when the battle starts (clean slate).
+        public boolean clearEffectsAtStart = true;
         // Game mode applied during a battle (e.g. ADVENTURE or SURVIVAL for block-breaking arenas).
         public String inBattleGameMode = "ADVENTURE";
         // Items that may not be used during an arena match. Entries are item ids
@@ -119,6 +121,9 @@ public class MatchmakingConfigManager {
         ));
         // Keep enforcing the blacklist this long after a match ends (blocks last-second use).
         public int itemBlacklistGraceSeconds = 2;
+        // Potion/mob effects stripped from players during a match (e.g. "minecraft:speed",
+        // "galosphere:astral"). Removed every tick, so they can't be applied mid-fight either.
+        public java.util.List<String> arenaEffectBlacklist = new java.util.ArrayList<>();
         // After a match ends, if a delayed teleport (e.g. an ender pearl thrown right before the end)
         // pulls a player back inside the arena within this window, teleport them back out.
         public int postMatchTeleportGuardSeconds = 5;
