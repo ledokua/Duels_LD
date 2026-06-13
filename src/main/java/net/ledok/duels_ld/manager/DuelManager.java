@@ -807,13 +807,13 @@ public class DuelManager {
             GameType.ADVENTURE);
     }
 
-    /** Start-of-battle player prep: clears effects and heals/feeds to full, each if configured. */
+    /**
+     * Start-of-battle player prep: strips any blacklisted effects (player buffs are kept) and
+     * heals/feeds to full if configured.
+     */
     private static void prepareForBattle(ServerPlayer player) {
-        MatchmakingConfigManager.BattleConfig battle = MatchmakingConfigManager.getConfig().battle;
-        if (battle.clearEffectsAtStart) {
-            player.removeAllEffects();
-        }
-        if (battle.healAndFeedAtStart) {
+        enforceEffectBlacklist(player);
+        if (MatchmakingConfigManager.getConfig().battle.healAndFeedAtStart) {
             player.setHealth(player.getMaxHealth());
             player.getFoodData().setFoodLevel(20);
             player.getFoodData().setSaturation(20.0f);

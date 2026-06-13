@@ -109,8 +109,6 @@ public class MatchmakingConfigManager {
         public int reconnectGraceSeconds = 60;
         // Heal players to full and refill hunger when the battle starts.
         public boolean healAndFeedAtStart = true;
-        // Remove every potion/mob effect from players when the battle starts (clean slate).
-        public boolean clearEffectsAtStart = true;
         // Game mode applied during a battle (e.g. ADVENTURE or SURVIVAL for block-breaking arenas).
         public String inBattleGameMode = "ADVENTURE";
         // Items that may not be used during an arena match. Entries are item ids

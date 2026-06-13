@@ -23,7 +23,7 @@ Fabric (1.21.1) mod that adds matchmade PvP battles in arenas: 1v1/2v2 queues, E
 ### Battles
 1. Configurable pre-fight countdown, then FIGHT.
 2. Friendly fire disabled, colored teams, name tags hidden from other teams.
-3. Players are healed, fed, and cleared of all potion effects at the start (each configurable).
+3. Players are healed and fed at the start (configurable); blacklisted effects are stripped, but player buffs are kept.
 4. Each player's HP is stored before the battle and restored afterward, so a battle is not a free heal.
 5. Configurable in-battle game mode (default ADVENTURE).
 6. Death is intercepted: the player is eliminated and moved to spectator; the last team standing wins.
