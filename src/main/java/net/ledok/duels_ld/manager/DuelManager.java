@@ -88,13 +88,18 @@ public class DuelManager {
         });
 
         UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
-            if (player instanceof ServerPlayer serverPlayer && isInDuel(serverPlayer)) {
-                ActiveTeamDuel teamDuel = getTeamDuel(serverPlayer);
-                if (teamDuel != null && teamDuel.isCountdown()) {
-                    return InteractionResult.FAIL;
+            if (player instanceof ServerPlayer serverPlayer) {
+                if (isInDuel(serverPlayer)) {
+                    ActiveTeamDuel teamDuel = getTeamDuel(serverPlayer);
+                    if (teamDuel != null && teamDuel.isCountdown()) {
+                        return InteractionResult.FAIL;
+                    }
+                    ActiveDuel duel = getDuel(serverPlayer);
+                    if (duel != null && duel.isCountdown()) {
+                        return InteractionResult.FAIL;
+                    }
                 }
-                ActiveDuel duel = getDuel(serverPlayer);
-                if (duel != null && duel.isCountdown()) {
+                if (isBlacklistedUse(serverPlayer, serverPlayer.getItemInHand(hand))) {
                     return InteractionResult.FAIL;
                 }
             }
@@ -102,13 +107,18 @@ public class DuelManager {
         });
 
         UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
-            if (player instanceof ServerPlayer serverPlayer && isInDuel(serverPlayer)) {
-                ActiveTeamDuel teamDuel = getTeamDuel(serverPlayer);
-                if (teamDuel != null && teamDuel.isCountdown()) {
-                    return InteractionResult.FAIL;
+            if (player instanceof ServerPlayer serverPlayer) {
+                if (isInDuel(serverPlayer)) {
+                    ActiveTeamDuel teamDuel = getTeamDuel(serverPlayer);
+                    if (teamDuel != null && teamDuel.isCountdown()) {
+                        return InteractionResult.FAIL;
+                    }
+                    ActiveDuel duel = getDuel(serverPlayer);
+                    if (duel != null && duel.isCountdown()) {
+                        return InteractionResult.FAIL;
+                    }
                 }
-                ActiveDuel duel = getDuel(serverPlayer);
-                if (duel != null && duel.isCountdown()) {
+                if (isBlacklistedUse(serverPlayer, serverPlayer.getItemInHand(hand))) {
                     return InteractionResult.FAIL;
                 }
             }
@@ -128,9 +138,7 @@ public class DuelManager {
                         return InteractionResultHolder.fail(held);
                     }
                 }
-                if (isUnderArenaItemRestriction(serverPlayer) && ArenaItemRules.isBlacklisted(held)) {
-                    serverPlayer.displayClientMessage(
-                        Component.translatable("duels_ld.duel.item_blocked").withStyle(ChatFormatting.RED), true);
+                if (isBlacklistedUse(serverPlayer, held)) {
                     return InteractionResultHolder.fail(held);
                 }
             }
@@ -1459,6 +1467,20 @@ public class DuelManager {
         }
         PostMatch pm = recentlyEnded.get(player.getUUID());
         return pm != null && System.currentTimeMillis() - pm.endedAt() < itemBlacklistGraceMs();
+    }
+
+    /**
+     * True (and notifies the player) if a blacklisted item is being used while under arena
+     * restrictions. Shared by the use-item / use-block / use-entity callbacks so the blacklist covers
+     * air use (throwing, eating), using an item on a block (e.g. glow ink sac), and on an entity.
+     */
+    private static boolean isBlacklistedUse(ServerPlayer player, ItemStack stack) {
+        if (isUnderArenaItemRestriction(player) && ArenaItemRules.isBlacklisted(stack)) {
+            player.displayClientMessage(
+                Component.translatable("duels_ld.duel.item_blocked").withStyle(ChatFormatting.RED), true);
+            return true;
+        }
+        return false;
     }
 
     /**
