@@ -58,6 +58,12 @@ public class MatchmakingManager {
             player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.cannot_queue_busy"));
             return;
         }
+        // A player already matched and waiting for a free arena must not re-enter a queue, or they
+        // could be matched a second time and their pending match would collapse under the partner.
+        if (containsPending(pending1v1, player.getUUID()) || containsPending(pending2v2, player.getUUID())) {
+            player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.cannot_queue_busy"));
+            return;
+        }
         boolean updated = false;
         if (mode == JoinQueuePayload.MODE_1V1) {
             if (!containsEntry(queue1v1, player.getUUID())) {
@@ -145,10 +151,10 @@ public class MatchmakingManager {
         boolean removed = false;
         UUID playerId = player.getUUID();
         if (mode == LeaveQueuePayload.MODE_1V1) {
-            removed = removeEntry(queue1v1, playerId) | removeFromPendingList(pending1v1, playerId);
+            removed = removeEntry(queue1v1, playerId) | removeFromPendingList(pending1v1, playerId, true);
         } else if (mode == LeaveQueuePayload.MODE_2V2) {
             boolean partyRemoved = removePartyFromQueue(playerId);
-            removed = removeEntry(queue2v2, playerId) | partyRemoved | removeFromPendingList(pending2v2, playerId);
+            removed = removeEntry(queue2v2, playerId) | partyRemoved | removeFromPendingList(pending2v2, playerId, false);
             if (partyRemoved) {
                 sendQueueStateToPartyMembers(playerId, player.server);
             }
@@ -336,8 +342,8 @@ public class MatchmakingManager {
         ServerPlayer p1 = server.getPlayerList().getPlayer(match.get(0));
         ServerPlayer p2 = server.getPlayerList().getPlayer(match.get(1));
         if (p1 == null || p2 == null || ActivityManager.isPlayerBusy(p1.getUUID()) || ActivityManager.isPlayerBusy(p2.getUUID())) {
-            notifyCancel(match, Component.translatable("duels_ld.matchmaking.cancel_unavailable"));
             pending1v1.poll();
+            handlePendingCancelled(match, null, true);
             return;
         }
         ArenaManager.Arena arena = ArenaManager.pickArena(1);
@@ -381,8 +387,8 @@ public class MatchmakingManager {
         if (p1 == null || p2 == null || p3 == null || p4 == null
             || ActivityManager.isPlayerBusy(p1.getUUID()) || ActivityManager.isPlayerBusy(p2.getUUID())
             || ActivityManager.isPlayerBusy(p3.getUUID()) || ActivityManager.isPlayerBusy(p4.getUUID())) {
-            notifyCancel(match, Component.translatable("duels_ld.matchmaking.cancel_unavailable"));
             pending2v2.poll();
+            handlePendingCancelled(match, null, false);
             return;
         }
         ArenaManager.Arena arena = ArenaManager.pickArena(2);
@@ -452,12 +458,12 @@ public class MatchmakingManager {
 
     private static boolean removeFromPending(UUID playerId) {
         boolean removed = false;
-        removed |= removeFromPendingList(pending1v1, playerId);
-        removed |= removeFromPendingList(pending2v2, playerId);
+        removed |= removeFromPendingList(pending1v1, playerId, true);
+        removed |= removeFromPendingList(pending2v2, playerId, false);
         return removed;
     }
 
-    private static boolean removeFromPendingList(ArrayDeque<List<UUID>> pending, UUID playerId) {
+    private static boolean removeFromPendingList(ArrayDeque<List<UUID>> pending, UUID playerId, boolean is1v1) {
         boolean removed = false;
         Iterator<List<UUID>> iterator = pending.iterator();
         while (iterator.hasNext()) {
@@ -465,9 +471,43 @@ public class MatchmakingManager {
             if (match.contains(playerId)) {
                 iterator.remove();
                 removed = true;
+                handlePendingCancelled(match, playerId, is1v1);
             }
         }
         return removed;
+    }
+
+    /**
+     * Tells the surviving participants of a dissolved pending match what happened and resets their
+     * client queue UI (they are no longer queued server-side, so without this their screen shows a
+     * "searching" timer forever). 1v1 survivors who are still available are put back at the front of
+     * the queue so they keep their matchmaking priority; 2v2 groups are told to queue again, since
+     * the party/solo composition of the pending group is no longer known.
+     */
+    private static void handlePendingCancelled(List<UUID> match, UUID removedPlayer, boolean is1v1) {
+        MinecraftServer server = ArenaManager.getServer();
+        if (server == null) {
+            return;
+        }
+        for (UUID id : match) {
+            if (id.equals(removedPlayer)) {
+                continue;
+            }
+            ServerPlayer player = server.getPlayerList().getPlayer(id);
+            if (player == null) {
+                continue;
+            }
+            boolean requeued = false;
+            if (is1v1 && !ActivityManager.isPlayerBusy(id) && !DuelManager.isInDuel(player)
+                && !containsEntry(queue1v1, id)) {
+                queue1v1.addFirst(new QueueEntry(id));
+                requeued = true;
+            }
+            player.sendSystemMessage(Component.translatable(requeued
+                ? "duels_ld.matchmaking.pending_requeued"
+                : "duels_ld.matchmaking.cancel_unavailable"));
+            sendQueueState(player);
+        }
     }
 
     private static void cleanPartyQueue(MinecraftServer server) {
@@ -684,7 +724,9 @@ public class MatchmakingManager {
     private static int getCurrentRange(long joinTime) {
         MatchmakingConfigManager.MatchmakingConfig config = MatchmakingConfigManager.getConfig();
         long elapsedMs = System.currentTimeMillis() - joinTime;
-        long steps = Math.max(0, elapsedMs / (config.mmrRangeIncreaseSeconds * 1000L));
+        // max(1, ...) guards against a hand-edited config with mmrRangeIncreaseSeconds <= 0, which
+        // would otherwise divide by zero and crash every server tick while anyone is queued.
+        long steps = Math.max(0, elapsedMs / (Math.max(1, config.mmrRangeIncreaseSeconds) * 1000L));
         long range = config.mmrRangeStart + steps * config.mmrRangeIncrease;
         if (config.mmrRangeMax > 0) {
             range = Math.min(range, config.mmrRangeMax);
@@ -710,19 +752,6 @@ public class MatchmakingManager {
     private static void notifyPending(ServerPlayer player, Component message) {
         if (player != null) {
             player.sendSystemMessage(message);
-        }
-    }
-
-    private static void notifyCancel(List<UUID> players, Component message) {
-        MinecraftServer srv = ArenaManager.getServer();
-        if (srv == null) {
-            return;
-        }
-        for (UUID id : players) {
-            ServerPlayer player = srv.getPlayerList().getPlayer(id);
-            if (player != null) {
-                player.sendSystemMessage(message);
-            }
         }
     }
 
