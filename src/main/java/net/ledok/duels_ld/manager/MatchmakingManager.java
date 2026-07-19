@@ -200,6 +200,7 @@ public class MatchmakingManager {
         double kill = Math.max(0.0, payload.killBonus());
         double oobDamage = Math.max(0.0, Math.min(100.0, payload.outOfBoundsDamagePercent()));
         double oobPoints = Math.max(0.0, Math.min(100.0, payload.outOfBoundsPointPenaltyPercent()));
+        double extraHealth = Math.max(0.0, Math.min(1004.0, payload.extraHealth()));
 
         MatchmakingConfigManager.MatchmakingConfig current = MatchmakingConfigManager.getConfig();
         MatchmakingConfigManager.MatchmakingConfig config = new MatchmakingConfigManager.MatchmakingConfig();
@@ -222,6 +223,7 @@ public class MatchmakingManager {
         config.rewards = current.rewards;
         config.battle.outOfBoundsDamagePercent = oobDamage;
         config.battle.outOfBoundsPointPenaltyPercent = oobPoints;
+        config.battle.extraHealth = extraHealth;
 
         MatchmakingConfigManager.updateConfig(config);
         player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.settings_updated"));

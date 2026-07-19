@@ -195,7 +195,8 @@ public class DuelCommand {
             config.weights.defensePerBlocked,
             config.weights.killBonus,
             config.battle.outOfBoundsDamagePercent,
-            config.battle.outOfBoundsPointPenaltyPercent
+            config.battle.outOfBoundsPointPenaltyPercent,
+            config.battle.extraHealth
         ));
         return 1;
     }

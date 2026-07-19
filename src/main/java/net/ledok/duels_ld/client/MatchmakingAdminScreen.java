@@ -51,6 +51,7 @@ public class MatchmakingAdminScreen extends BaseOwoScreen<FlowLayout> {
     private TextBoxComponent killBonus;
     private TextBoxComponent outOfBoundsDamage;
     private TextBoxComponent outOfBoundsPoints;
+    private TextBoxComponent extraHealth;
 
     private LabelComponent errorLabel;
     private SyncMatchmakingSettingsPayload pendingSettings;
@@ -93,6 +94,11 @@ public class MatchmakingAdminScreen extends BaseOwoScreen<FlowLayout> {
         supportPerHeal = settingRow(content, "duels_ld.screen.matchmaking_admin.support_label");
         defensePerBlocked = settingRow(content, "duels_ld.screen.matchmaking_admin.defense_label");
         killBonus = settingRow(content, "duels_ld.screen.matchmaking_admin.kill_bonus_label");
+
+        content.child(spacer(8));
+        content.child(sectionHeader(Component.translatable("duels_ld.screen.matchmaking_admin.battle_header")));
+        content.child(spacer(2));
+        extraHealth = settingRow(content, "duels_ld.screen.matchmaking_admin.extra_health_label");
 
         content.child(spacer(8));
         content.child(sectionHeader(Component.translatable("duels_ld.screen.matchmaking_admin.penalties_header")));
@@ -170,6 +176,7 @@ public class MatchmakingAdminScreen extends BaseOwoScreen<FlowLayout> {
         killBonus.text(Double.toString(payload.killBonus()));
         outOfBoundsDamage.text(Double.toString(payload.outOfBoundsDamagePercent()));
         outOfBoundsPoints.text(Double.toString(payload.outOfBoundsPointPenaltyPercent()));
+        extraHealth.text(Double.toString(payload.extraHealth()));
     }
 
     private void save() {
@@ -183,6 +190,7 @@ public class MatchmakingAdminScreen extends BaseOwoScreen<FlowLayout> {
         double kill = parseDouble(killBonus.getValue());
         double oobDmg = parseDouble(outOfBoundsDamage.getValue());
         double oobPts = parseDouble(outOfBoundsPoints.getValue());
+        double extraHp = parseDouble(extraHealth.getValue());
 
         if (v1Time < 10 || v2Time < 10) {
             setError("duels_ld.screen.matchmaking_admin.error_time_min");
@@ -200,12 +208,17 @@ public class MatchmakingAdminScreen extends BaseOwoScreen<FlowLayout> {
             setError("duels_ld.screen.matchmaking_admin.error_percent_range");
             return;
         }
+        // 1004 keeps base 20 + bonus within the max_health attribute cap of 1024.
+        if (extraHp < 0 || extraHp > 1004) {
+            setError("duels_ld.screen.matchmaking_admin.error_extra_health_range");
+            return;
+        }
 
         if (errorLabel != null) {
             errorLabel.text(Component.empty());
         }
         ClientPlayNetworking.send(new UpdateMatchmakingSettingsPayload(
-            v1Time, v1Hp, v2Time, v2Hp, off, sup, def, kill, oobDmg, oobPts
+            v1Time, v1Hp, v2Time, v2Hp, off, sup, def, kill, oobDmg, oobPts, extraHp
         ));
     }
 

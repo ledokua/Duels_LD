@@ -109,6 +109,9 @@ public class MatchmakingConfigManager {
         public int reconnectGraceSeconds = 60;
         // Heal players to full and refill hunger when the battle starts.
         public boolean healAndFeedAtStart = true;
+        // Extra max health granted for the duration of a battle, applied as an additive
+        // generic.max_health attribute modifier (20 = +10 hearts on top of the vanilla 20).
+        public double extraHealth = 20.0;
         // Game mode applied during a battle (e.g. ADVENTURE or SURVIVAL for block-breaking arenas).
         public String inBattleGameMode = "ADVENTURE";
         // Items that may not be used during an arena match. Entries are item ids

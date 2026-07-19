@@ -156,6 +156,8 @@
   "duels_ld.screen.matchmaking_admin.support_label": "підтримка / лікування:",
   "duels_ld.screen.matchmaking_admin.defense_label": "захист / блок:",
   "duels_ld.screen.matchmaking_admin.kill_bonus_label": "бонус за вбивство:",
+  "duels_ld.screen.matchmaking_admin.battle_header": "Бій",
+  "duels_ld.screen.matchmaking_admin.extra_health_label": "Додаткове HP у бою:",
   "duels_ld.screen.matchmaking_admin.penalties_header": "Покарання за вихід з арени",
   "duels_ld.screen.matchmaking_admin.out_of_bounds_damage_label": "Шкода (% макс. HP):",
   "duels_ld.screen.matchmaking_admin.out_of_bounds_points_label": "Втрата балів (%):",
@@ -164,6 +166,7 @@
   "duels_ld.screen.matchmaking_admin.error_win_hp_range": "Win HP має бути від 0 до 100.",
   "duels_ld.screen.matchmaking_admin.error_points_non_negative": "Значення балів мають бути невід'ємними.",
   "duels_ld.screen.matchmaking_admin.error_percent_range": "Відсотки покарання мають бути від 0 до 100.",
+  "duels_ld.screen.matchmaking_admin.error_extra_health_range": "Додаткове HP у бою має бути від 0 до 1004.",
 
   "key.duels_ld.open_lobby": "Відкрити лобі",
   "duels_ld.placeholder.leaderboard_1v1_header": "Топ 10 Elo 1v1",

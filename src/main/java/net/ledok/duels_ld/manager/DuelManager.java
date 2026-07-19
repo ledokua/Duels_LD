@@ -28,6 +28,9 @@ import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.core.Holder;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.InteractionResultHolder;
 
@@ -46,6 +49,8 @@ public class DuelManager {
     private record PostMatch(long endedAt, ResourceKey<Level> dimension, Vec3 returnPos, float yaw, float pitch, String arenaName) {}
     private static final double COUNTDOWN_FREEZE_THRESHOLD_SQR = 0.25;
     private static final double SPECTATOR_LEASH_RADIUS = 8.0;
+    private static final ResourceLocation EXTRA_HEALTH_MODIFIER_ID =
+        ResourceLocation.fromNamespaceAndPath(DuelsLdMod.MOD_ID, "battle_extra_health");
 
     public static void init() {
         ServerTickEvents.END_SERVER_TICK.register(DuelManager::onServerTick);
@@ -333,6 +338,11 @@ public class DuelManager {
         player1.setGameMode(battleGameMode());
         player2.setGameMode(battleGameMode());
 
+        // Prep (bonus max health + heal) must run before the start health is captured below, so the
+        // support-points tracker doesn't count the start-of-battle heal as healing.
+        prepareForBattle(player1);
+        prepareForBattle(player2);
+
         ActiveDuel duel = new ActiveDuel(player1.getUUID(), player2.getUUID(), settings, teamName, player1.getHealth(), player2.getHealth());
         activeDuels.put(player1.getUUID(), duel);
         activeDuels.put(player2.getUUID(), duel);
@@ -341,9 +351,6 @@ public class DuelManager {
 
         duel.getBossBar().addPlayer(player1);
         duel.getBossBar().addPlayer(player2);
-
-        prepareForBattle(player1);
-        prepareForBattle(player2);
 
         int countdown = duel.getInitialCountdownSeconds();
         player1.sendSystemMessage(Component.translatable("duels_ld.duel.starting_soon", countdown));
@@ -435,6 +442,13 @@ public class DuelManager {
         p3.setGameMode(battleGameMode());
         p4.setGameMode(battleGameMode());
 
+        // Prep (bonus max health + heal) must run before the start health is captured below, so the
+        // support-points tracker doesn't count the start-of-battle heal as healing.
+        prepareForBattle(p1);
+        prepareForBattle(p2);
+        prepareForBattle(p3);
+        prepareForBattle(p4);
+
         Map<UUID, Float> startHealth = new HashMap<>();
         startHealth.put(p1.getUUID(), p1.getHealth());
         startHealth.put(p2.getUUID(), p2.getHealth());
@@ -455,11 +469,6 @@ public class DuelManager {
         duel.getBossBar().addPlayer(p2);
         duel.getBossBar().addPlayer(p3);
         duel.getBossBar().addPlayer(p4);
-
-        prepareForBattle(p1);
-        prepareForBattle(p2);
-        prepareForBattle(p3);
-        prepareForBattle(p4);
 
         int countdown = duel.getInitialCountdownSeconds();
         for (ServerPlayer p : List.of(p1, p2, p3, p4)) {
@@ -816,15 +825,47 @@ public class DuelManager {
     }
 
     /**
-     * Start-of-battle player prep: strips any blacklisted effects (player buffs are kept) and
-     * heals/feeds to full if configured.
+     * Start-of-battle player prep: strips any blacklisted effects (player buffs are kept), grants
+     * the configured bonus max health, and heals/feeds to full if configured.
      */
     private static void prepareForBattle(ServerPlayer player) {
         enforceEffectBlacklist(player);
+        applyExtraHealth(player);
         if (MatchmakingConfigManager.getConfig().battle.healAndFeedAtStart) {
             player.setHealth(player.getMaxHealth());
             player.getFoodData().setFoodLevel(20);
             player.getFoodData().setSaturation(20.0f);
+        }
+    }
+
+    /**
+     * Grants the configured battle bonus max health as an additive {@code generic.max_health}
+     * modifier (config {@code battle.extraHealth}, e.g. 20 turns a vanilla player into 40 max HP).
+     * Added as a permanent (NBT-persisted) modifier so a relog within the reconnect grace keeps it;
+     * every restore path removes it via {@link #removeExtraHealth}.
+     */
+    private static void applyExtraHealth(ServerPlayer player) {
+        AttributeInstance maxHealth = player.getAttribute(Attributes.MAX_HEALTH);
+        if (maxHealth == null) {
+            return;
+        }
+        maxHealth.removeModifier(EXTRA_HEALTH_MODIFIER_ID);
+        double amount = MatchmakingConfigManager.getConfig().battle.extraHealth;
+        if (amount > 0.0) {
+            maxHealth.addPermanentModifier(new AttributeModifier(
+                EXTRA_HEALTH_MODIFIER_ID, amount, AttributeModifier.Operation.ADD_VALUE));
+        }
+    }
+
+    /** Removes the battle bonus max health and clamps current health back into the normal range. */
+    private static void removeExtraHealth(ServerPlayer player) {
+        AttributeInstance maxHealth = player.getAttribute(Attributes.MAX_HEALTH);
+        if (maxHealth == null) {
+            return;
+        }
+        maxHealth.removeModifier(EXTRA_HEALTH_MODIFIER_ID);
+        if (player.getHealth() > player.getMaxHealth()) {
+            player.setHealth(player.getMaxHealth());
         }
     }
 
@@ -954,6 +995,7 @@ public class DuelManager {
     private static void restorePlayer(ServerPlayer player, boolean shouldTeleportFromBackup) {
         if (player == null) return;
 
+        removeExtraHealth(player);
         PlayerBackup backup = DuelBackupStore.get(player.server).take(player.getUUID());
         if (backup != null) {
             player.setGameMode(backup.gameMode());
@@ -970,6 +1012,7 @@ public class DuelManager {
     }
 
     private static void restorePlayerFromBackup(ServerPlayer player) {
+        removeExtraHealth(player);
         PlayerBackup backup = DuelBackupStore.get(player.server).take(player.getUUID());
         if (backup != null) {
             player.setGameMode(backup.gameMode());
