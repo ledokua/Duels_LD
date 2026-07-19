@@ -161,7 +161,8 @@ public class DuelManager {
                     if (attacker instanceof ServerPlayer attackerPlayer) {
                         ActiveTeamDuel attackerTeamDuel = getTeamDuel(attackerPlayer);
                         if (attackerTeamDuel != teamDuel) {
-                            teamDuel.markForEnd(true, 0);
+                            // Outside interference is ignored, not a draw — otherwise a losing team
+                            // could have a friend punch them to void the match and dodge the Elo loss.
                             return false;
                         }
                         if (teamDuel.isEliminated(attackerPlayer.getUUID())) {
@@ -208,12 +209,8 @@ public class DuelManager {
                         }
                         return false;
                     } else if (isInDuel(player) || isInDuel(attackerPlayer)) {
-                        if (isInDuel(player)) {
-                             ActiveDuel duel = getDuel(player);
-                             if (duel != null) {
-                                 duel.markForEnd(true, null);
-                             }
-                        }
+                        // Outside interference is ignored, not a draw — otherwise a losing player
+                        // could have a friend punch them to void the match and dodge the Elo loss.
                         return false;
                     }
                 } else if (isInDuel(player)) {
@@ -251,7 +248,11 @@ public class DuelManager {
                     int loserTeam = teamDuel.getTeam(player.getUUID());
                     int winningTeam = otherTeam(loserTeam);
                     Entity attacker = source.getEntity();
-                    if (attacker instanceof ServerPlayer attackerPlayer && getTeamDuel(attackerPlayer) == teamDuel) {
+                    // Self-damage must not credit the attacker's own team, or a player could win by
+                    // shooting themselves below the win-HP threshold.
+                    if (attacker instanceof ServerPlayer attackerPlayer
+                        && !attackerPlayer.getUUID().equals(player.getUUID())
+                        && getTeamDuel(attackerPlayer) == teamDuel) {
                         int attackerTeam = teamDuel.getTeam(attackerPlayer.getUUID());
                         if (attackerTeam != 0) {
                             winningTeam = attackerTeam;
@@ -549,6 +550,15 @@ public class DuelManager {
 
             long tickDelta = duel.tickDelta(currentTime);
 
+            // A decided end (kill / win-HP threshold) must win over disconnect handling: if the
+            // loser's connection drops the same tick they were beaten, honoring the forfeit instead
+            // would flip the result against the legitimate winner.
+            ActiveDuel.EndRequest pendingEndRequest = duel.consumePendingEndRequest();
+            if (pendingEndRequest != null) {
+                endDuel(server, duel, pendingEndRequest.isDraw(), pendingEndRequest.getWinnerUUID());
+                continue;
+            }
+
             // Disconnect grace: a player only forfeits once their reconnect window has expired.
             boolean p1Forfeit = p1 == null && graceExpired(duel, duel.getPlayer1(), currentTime);
             boolean p2Forfeit = p2 == null && graceExpired(duel, duel.getPlayer2(), currentTime);
@@ -571,12 +581,6 @@ public class DuelManager {
                 }
                 duel.getBossBar().setName(Component.translatable("duels_ld.duel.waiting_reconnect"));
                 duel.getBossBar().setColor(BossEvent.BossBarColor.YELLOW);
-                continue;
-            }
-
-            ActiveDuel.EndRequest pendingEndRequest = duel.consumePendingEndRequest();
-            if (pendingEndRequest != null) {
-                endDuel(server, duel, pendingEndRequest.isDraw(), pendingEndRequest.getWinnerUUID());
                 continue;
             }
 
