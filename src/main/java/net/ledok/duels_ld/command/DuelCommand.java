@@ -261,6 +261,10 @@ public class DuelCommand {
 
     private static int arenaRemove(CommandContext<CommandSourceStack> context) {
         String name = StringArgumentType.getString(context, "name");
+        if (ArenaManager.isActive(name)) {
+            context.getSource().sendFailure(Component.translatable("duels_ld.command.arena.in_use", name));
+            return 0;
+        }
         boolean removed = ArenaManager.removeArena(name);
         if (removed) {
             context.getSource().sendSuccess(() -> Component.translatable("duels_ld.command.arena.removed", name), true);

@@ -3,6 +3,7 @@ package net.ledok.duels_ld.manager;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.ledok.duels_ld.network.PartyAcceptPayload;
+import net.ledok.duels_ld.network.PartyDeclinePayload;
 import net.ledok.duels_ld.network.PartyInvitePayload;
 import net.ledok.duels_ld.network.RequestEloPayload;
 import net.ledok.duels_ld.network.SyncEloPayload;
@@ -42,6 +43,9 @@ public class PartyManager {
         });
         ServerPlayNetworking.registerGlobalReceiver(PartyAcceptPayload.TYPE, (payload, context) -> {
             context.server().execute(() -> handleAccept(context.player(), payload.leaderName()));
+        });
+        ServerPlayNetworking.registerGlobalReceiver(PartyDeclinePayload.TYPE, (payload, context) -> {
+            context.server().execute(() -> handleDecline(context.player(), payload.leaderName()));
         });
         ServerPlayNetworking.registerGlobalReceiver(RequestEloPayload.TYPE, (payload, context) -> {
             context.server().execute(() -> {
@@ -275,6 +279,42 @@ public class PartyManager {
             return;
         }
         acceptInvite(target, leader);
+    }
+
+    /**
+     * Removes a pending invite server-side. Without this the client's "decline" would only hide the
+     * banner locally, and the invite would reappear on the next party sync (or relog) forever.
+     * A blank leader name declines the newest invite — the one the client banner shows.
+     */
+    private static void handleDecline(ServerPlayer target, String leaderName) {
+        Deque<UUID> invites = pendingInvites.get(target.getUUID());
+        if (invites == null || invites.isEmpty()) {
+            sendPartyState(target);
+            return;
+        }
+        UUID leaderId = null;
+        if (leaderName == null || leaderName.isBlank()) {
+            leaderId = invites.peekLast();
+        } else {
+            for (UUID candidate : invites) {
+                if (leaderName.equalsIgnoreCase(resolveName(target.server, candidate))) {
+                    leaderId = candidate;
+                    break;
+                }
+            }
+        }
+        if (leaderId == null) {
+            sendPartyState(target);
+            return;
+        }
+        invites.remove(leaderId);
+        cleanupInviteSet(target.getUUID());
+        ServerPlayer leader = target.server.getPlayerList().getPlayer(leaderId);
+        if (leader != null) {
+            leader.sendSystemMessage(Component.translatable("duels_ld.party.invite_declined", target.getName().getString()));
+            sendPartyState(leader);
+        }
+        sendPartyState(target);
     }
 
     private static void acceptFirstInvite(ServerPlayer target) {

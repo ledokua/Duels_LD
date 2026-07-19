@@ -55,11 +55,12 @@ public class ArenaManager {
     }
 
     public static boolean removeArena(String name) {
-        if (!arenas.containsKey(name)) {
+        // An arena hosting a live match can't be deleted: the running duel resolves it by name
+        // every tick for bounds enforcement, so deleting it would silently disable that.
+        if (!arenas.containsKey(name) || isActive(name)) {
             return false;
         }
         arenas.remove(name);
-        activeArenas.remove(name);
         save();
         return true;
     }
@@ -68,9 +69,13 @@ public class ArenaManager {
         return arenas.get(name);
     }
 
-    /** Renames an arena. Fails if the source is missing or the target name is taken/empty. */
+    /**
+     * Renames an arena. Fails if the source is missing, the target name is taken/empty, or the
+     * arena is hosting a live match (the running duel holds the old name, so renaming would break
+     * its bounds enforcement and leak the active flag).
+     */
     public static boolean renameArena(String oldName, String newName) {
-        if (newName == null || newName.isEmpty() || oldName.equals(newName)) {
+        if (newName == null || newName.isEmpty() || oldName.equals(newName) || isActive(oldName)) {
             return false;
         }
         Arena arena = arenas.get(oldName);
@@ -80,9 +85,6 @@ public class ArenaManager {
         arenas.remove(oldName);
         arena.name = newName;
         arenas.put(newName, arena);
-        if (activeArenas.remove(oldName)) {
-            activeArenas.add(newName);
-        }
         save();
         return true;
     }

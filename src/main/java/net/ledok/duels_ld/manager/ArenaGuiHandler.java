@@ -41,11 +41,19 @@ public final class ArenaGuiHandler {
                     ArenaWand.bind(player, name);
                 }
             }
-            case "delete" -> ArenaManager.removeArena(name);
+            case "delete" -> {
+                if (!ArenaManager.removeArena(name) && ArenaManager.isActive(name)) {
+                    player.sendSystemMessage(Component.translatable("duels_ld.command.arena.in_use", name).withStyle(ChatFormatting.RED));
+                }
+            }
             case "bind" -> ArenaWand.bind(player, name);
             case "rename" -> {
-                if (ArenaManager.renameArena(name, p.arg()) && name.equals(ArenaWand.heldWandArena(player))) {
-                    ArenaWand.bind(player, p.arg());
+                if (ArenaManager.renameArena(name, p.arg())) {
+                    if (name.equals(ArenaWand.heldWandArena(player))) {
+                        ArenaWand.bind(player, p.arg());
+                    }
+                } else if (ArenaManager.isActive(name)) {
+                    player.sendSystemMessage(Component.translatable("duels_ld.command.arena.in_use", name).withStyle(ChatFormatting.RED));
                 }
             }
             case "wand" -> {

@@ -19,6 +19,7 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.ledok.duels_ld.network.JoinQueuePayload;
 import net.ledok.duels_ld.network.LeaveQueuePayload;
 import net.ledok.duels_ld.network.PartyAcceptPayload;
+import net.ledok.duels_ld.network.PartyDeclinePayload;
 import net.ledok.duels_ld.network.PartyInvitePayload;
 import net.ledok.duels_ld.network.RequestEloPayload;
 import net.ledok.duels_ld.network.SyncPartyPayload;
@@ -372,6 +373,11 @@ public class MatchmakingScreen extends BaseOwoScreen<FlowLayout> {
             accept.sizing(Sizing.fixed(46), Sizing.fixed(16));
             ButtonComponent decline = styledButton(
                 Component.translatable("duels_ld.screen.matchmaking.decline"), DANGER_DARK, DANGER, DANGER, b -> {
+                    if (incomingInvite != null) {
+                        // Tell the server too — otherwise the invite stays pending there and the
+                        // banner reappears on the next party sync.
+                        ClientPlayNetworking.send(new PartyDeclinePayload(incomingInvite));
+                    }
                     incomingInvite = null;
                     rebuildContent();
                 });
