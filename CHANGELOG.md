@@ -2,6 +2,8 @@
 
 ## 1.7.2 — EMI off the stake screen
 
+Deployed 2026-10-26 (Prism, pack, live) by the Eden session; live at the next restart.
+
 - Fixed: with EMI installed, clicking a stake slot could open an EMI recipe instead of placing the
   item. EMI hooks every container screen for input, and without bounds it laid its (invisible)
   favorites and index panels out under the stake screen. A small EMI plugin
