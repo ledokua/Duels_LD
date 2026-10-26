@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.2 — EMI off the stake screen
+
+- Fixed: with EMI installed, clicking a stake slot could open an EMI recipe instead of placing the
+  item. EMI hooks every container screen for input, and without bounds it laid its (invisible)
+  favorites and index panels out under the stake screen. A small EMI plugin
+  (`client/compat/DuelsEmiPlugin`, the "emi" entrypoint) now claims the whole stake screen, so EMI
+  neither shows nor handles anything there (no EMI on player screens). EMI stays optional.
+
 ## 1.7.1 — themes follow the Eden hub
 
 Deployed 2026-10-26 (Prism, pack repo, live) with Eden_LD 1.3.13; live at the next restart.

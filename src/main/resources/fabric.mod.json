@@ -15,6 +15,9 @@
     ],
     "main": [
       "net.ledok.duels_ld.DuelsLdMod"
+    ],
+    "emi": [
+      "net.ledok.duels_ld.client.compat.DuelsEmiPlugin"
     ]
   },
   "mixins": [

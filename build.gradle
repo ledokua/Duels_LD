@@ -30,6 +30,7 @@ repositories {
     // Gives libs/*.jar module coordinates (":VectorLib-fabric:<version>") so Loom's `include`
     // (jar-in-jar) accepts them; plain `include files(...)` is rejected.
     flatDir { dirs 'libs' }
+    maven { name = "TerraformersMC"; url = "https://maven.terraformersmc.com/releases/"; content { includeGroup "dev.emi" } }
 }
 
 dependencies {
@@ -72,6 +73,9 @@ dependencies {
             include: ["Eden_LD-*.jar"],
             exclude: ["*sources.jar"]
     )
+    // EMI (optional): only to keep its panels off the stake screen (client/compat/DuelsEmiPlugin).
+    modCompileOnly("dev.emi:emi-fabric:1.1.24+1.21.1:api") { transitive = false }
+    modLocalRuntime("dev.emi:emi-fabric:1.1.24+1.21.1") { transitive = false }
     // Economy_LD bundles its JDBC driver as a jar-in-jar, but Loom does not unpack nested jars
     // from a local fileTree mod in the dev runtime, so the driver is missing on the classpath
     // ("No suitable driver found for jdbc:sqlite"). Provide it explicitly for dev runs only.
