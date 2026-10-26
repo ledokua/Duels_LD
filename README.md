@@ -62,6 +62,7 @@ refunds them. The stakes sit in a crash-safe duel bank, and every number is in
 6. If Economy_LD is not installed, rewards are silently disabled.
 
 ### GUI
+1. Player screens follow the Eden hub's theme (or use Duels' own Parchment, Modern or Vanilla; the header button switches).
 1. Lobby/matchmaking screen (`B` keybind) — shows Elo and W/L/D per mode, queue timers, your Eden party, and coins earned today.
 2. Admin GUI for matchmaking settings (`/duel admingui`) — durations, win-HP, scoring weights, and the out-of-bounds penalty.
 3. Arena manager screen (`/duel arena gui`).

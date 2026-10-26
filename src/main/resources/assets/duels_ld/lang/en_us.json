@@ -132,9 +132,11 @@
   "duels_ld.screen.matchmaking.record": "%sW %sL %sD",
   "duels_ld.screen.matchmaking.status_idle": "Idle",
   "duels_ld.screen.matchmaking.status_searching": "Searching — %s",
+  "duels_ld.screen.theme.hub": "Hub theme",
+  "duels_ld.screen.theme.parchment": "Parchment",
   "duels_ld.screen.theme.modern": "Modern",
   "duels_ld.screen.theme.vanilla": "Vanilla",
-  "duels_ld.screen.theme.tooltip": "Switch UI style",
+  "duels_ld.screen.theme.tooltip": "Switch the look of the Duels screens. \"Hub theme\" follows the theme picked in the Eden hub.",
 
   "duels_ld.screen.matchmaking_admin.title": "Matchmaking Settings",
   "duels_ld.screen.matchmaking_admin.one_v_one_time_label": "1v1 time (s):",

@@ -55,7 +55,7 @@ public class WagerReviewScreen extends DuelsScreen {
             concat(data.authorItems(), data.challengerItems()));
         body.item(text(Component.translatable("duels_ld.wager.review.winner_gets", pot), T.gold));
         body.item(WagerUi.notice(T, Component.translatable("duels_ld.wager.screen.rules", data.fightMinutes()), T.accent, T.inkMid,
-            canvas.width() - 20));
+            canvas.width() - 20 - 2 * T.shellPadding()));
         shell.item(body);
 
         Flex footer = Flex.row().gap(6).padding(Insets.of(6)).alignItems(Align.CENTER);

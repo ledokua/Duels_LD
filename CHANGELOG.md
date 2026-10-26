@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.7.1 — themes follow the Eden hub
+
+- The player screens (matchmaking, stake, offer, review) have four looks:
+  - **Hub theme:** the theme picked in the Eden hub (parchment, dark, overgrown, stone tablet,
+    and any resource-pack theme). It's read from Eden's `EdenHubThemeApi` (Eden 1.3.13+) when a
+    screen opens, and an open screen rebuilds when the hub theme changes. This is the default
+    when Eden has the API.
+  - **Parchment:** Duels' own copy of the family parchment look. It works without Eden, and it's
+    the default when Eden doesn't have the API.
+  - **Modern** and **Vanilla**, as before.
+- The header button cycles through them and shows the next one. The choice is still kept in
+  `config/duels_ld_client.json`.
+- Staff screens (matchmaking settings, arena manager) stay Modern.
+
 ## 1.7.0 — wager stake screens
 
 Deployed 2026-10-26 to the Fallen Eden pack and live server, with Eden_LD 1.3.12; live at the next restart.

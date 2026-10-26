@@ -132,9 +132,11 @@
   "duels_ld.screen.matchmaking.record": "%sП %sПр %sН",
   "duels_ld.screen.matchmaking.status_idle": "Очікування",
   "duels_ld.screen.matchmaking.status_searching": "Пошук — %s",
+  "duels_ld.screen.theme.hub": "Тема хабу",
+  "duels_ld.screen.theme.parchment": "Пергамент",
   "duels_ld.screen.theme.modern": "Модерн",
   "duels_ld.screen.theme.vanilla": "Ваніль",
-  "duels_ld.screen.theme.tooltip": "Змінити стиль інтерфейсу",
+  "duels_ld.screen.theme.tooltip": "Змінити вигляд екранів дуелей. «Тема хабу» повторює тему, обрану в хабі Eden.",
 
   "duels_ld.screen.matchmaking_admin.title": "Налаштування матчмейкінгу",
   "duels_ld.screen.matchmaking_admin.one_v_one_time_label": "час 1v1 (с):",

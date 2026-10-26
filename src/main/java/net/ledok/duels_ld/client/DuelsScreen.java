@@ -23,7 +23,7 @@ import org.jetbrains.annotations.Nullable;
  */
 public abstract class DuelsScreen extends CanvasScreen {
 
-    protected final UiTheme T;
+    protected UiTheme T;
     private final int minW, maxW, minH, maxH;
     @Nullable
     private final Integer backdrop;
@@ -67,10 +67,22 @@ public abstract class DuelsScreen extends CanvasScreen {
         Flex shell = canvas.add(Flex.column());
         shell.sizing(Sizing.fixed(w), Sizing.fixed(h));
         shell.background(T.shell());
+        shell.padding(Insets.of(T.shellPadding()));
         build(shell);
         shell.layoutIn(w, h);
         if (scroll != null) {
             scroll.scrollTo(scrollY);
+        }
+    }
+
+    /** The player switched Eden's hub theme while this screen was open: rebuild in the new one. */
+    @Override
+    protected void onCanvasFrame(float partialTick) {
+        if (T.stale()) {
+            T = UiTheme.current();
+            canvas.theme(T.theme());
+            dimBackground(T.dimsBackground());
+            rebuild();
         }
     }
 

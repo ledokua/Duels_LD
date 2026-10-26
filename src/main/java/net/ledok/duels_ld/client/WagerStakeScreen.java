@@ -40,10 +40,10 @@ import java.util.List;
  */
 public class WagerStakeScreen extends CanvasHandledScreen<WagerStakeMenu> {
     private static final float W = 460;
-    private static final float H = 318;
+    private static final float H = 340;
     private static final float LEFT = 196;
 
-    private final UiTheme T = UiTheme.current();
+    private UiTheme T = UiTheme.current();
     private final WagerStakeMenu.Data data;
     private final long openedAt = System.currentTimeMillis();
 
@@ -87,6 +87,7 @@ public class WagerStakeScreen extends CanvasHandledScreen<WagerStakeMenu> {
         Flex shell = canvas.add(Flex.column());
         shell.sizing(Sizing.fixed(W), Sizing.fixed(H));
         shell.background(T.shell());
+        shell.padding(Insets.of(T.shellPadding()));
 
         shell.item(header());
 
@@ -181,7 +182,7 @@ public class WagerStakeScreen extends CanvasHandledScreen<WagerStakeMenu> {
     private Flex rightColumn() {
         Flex col = Flex.column().gap(5);
         col.sizing(Sizing.expand(), Sizing.content());
-        float width = W - LEFT - 30;
+        float width = W - LEFT - 30 - 2 * T.shellPadding();
         if (data.offer()) {
             if (!data.authorComment().isEmpty()) {
                 col.item(WagerUi.wrapped(Component.translatable("duels_ld.wager.screen.author_comment", data.authorComment()), T.inkMid, width));
@@ -276,6 +277,11 @@ public class WagerStakeScreen extends CanvasHandledScreen<WagerStakeMenu> {
     @Override
     protected void containerTick() {
         super.containerTick();
+        if (T.stale()) {
+            T = UiTheme.current();
+            canvas.theme(T.theme());
+            build();
+        }
         if (timer != null) {
             long left = data.remainingMillis() - (System.currentTimeMillis() - openedAt);
             timer.text(Component.translatable("duels_ld.wager.screen.closes_in", WagerUi.time(left)));

@@ -110,7 +110,7 @@ public class MatchmakingScreen extends DuelsScreen {
         Flex header = header(info);
         // Shows the style it switches TO; the new screen re-reads UiTheme.current().
         Button themeToggle = button(
-            Component.translatable(T.vanillaStyle ? "duels_ld.screen.theme.modern" : "duels_ld.screen.theme.vanilla"),
+            UiTheme.next().label(),
             18, T.panel, T.accent, T.hairline, () -> {
                 UiTheme.toggle();
                 Minecraft.getInstance().setScreen(new MatchmakingScreen());
