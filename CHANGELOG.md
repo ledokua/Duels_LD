@@ -2,6 +2,8 @@
 
 ## 1.7.1 — themes follow the Eden hub
 
+Deployed 2026-10-26 (Prism, pack repo, live) with Eden_LD 1.3.13; live at the next restart.
+
 - The player screens (matchmaking, stake, offer, review) have four looks:
   - **Hub theme:** the theme picked in the Eden hub (parchment, dark, overgrown, stone tablet,
     and any resource-pack theme). It's read from Eden's `EdenHubThemeApi` (Eden 1.3.13+) when a
