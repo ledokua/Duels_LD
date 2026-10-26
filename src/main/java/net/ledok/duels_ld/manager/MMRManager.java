@@ -33,12 +33,23 @@ public class MMRManager {
         ServerLifecycleEvents.SERVER_STARTED.register(srv -> load());
     }
 
+    // Reads never store anything: a player only gets a rating entry once a result is applied, so
+    // looking at someone (screen, API, matchmaking) doesn't put them on the leaderboard.
     public static int getRating1v1(UUID player) {
-        return mmr1v1.computeIfAbsent(player, k -> MatchmakingConfigManager.getConfig().elo.startingRating);
+        return mmr1v1.getOrDefault(player, startingRating());
     }
 
     public static int getRating2v2(UUID player) {
-        return mmr2v2.computeIfAbsent(player, k -> MatchmakingConfigManager.getConfig().elo.startingRating);
+        return mmr2v2.getOrDefault(player, startingRating());
+    }
+
+    /** True once the player has a stored rating in either mode. */
+    public static boolean hasRating(UUID player) {
+        return mmr1v1.containsKey(player) || mmr2v2.containsKey(player);
+    }
+
+    public static int startingRating() {
+        return MatchmakingConfigManager.getConfig().elo.startingRating;
     }
 
     public static Map<UUID, Integer> getAll1v1Ratings() {

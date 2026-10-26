@@ -58,23 +58,33 @@ public class StatsManager {
         }
     }
 
-    public static PlayerStats getStats(UUID playerUUID) {
+    /** The player's record, or null if they never finished a match. Never creates one. */
+    public static PlayerStats find(UUID playerUUID) {
+        return playerStats.get(playerUUID);
+    }
+
+    /** A copy of every record (for leaderboards). */
+    public static Map<UUID, PlayerStats> all() {
+        return Map.copyOf(playerStats);
+    }
+
+    public static void recordWin(UUID playerUUID, int teamSize) {
+        record(playerUUID).addWin(teamSize);
+        markDirty();
+    }
+
+    public static void recordLoss(UUID playerUUID, int teamSize) {
+        record(playerUUID).addLoss(teamSize);
+        markDirty();
+    }
+
+    public static void recordDraw(UUID playerUUID, int teamSize) {
+        record(playerUUID).addDraw(teamSize);
+        markDirty();
+    }
+
+    private static PlayerStats record(UUID playerUUID) {
         return playerStats.computeIfAbsent(playerUUID, k -> new PlayerStats());
-    }
-
-    public static void recordWin(UUID playerUUID) {
-        getStats(playerUUID).addWin();
-        markDirty();
-    }
-
-    public static void recordLoss(UUID playerUUID) {
-        getStats(playerUUID).addLoss();
-        markDirty();
-    }
-
-    public static void recordDraw(UUID playerUUID) {
-        getStats(playerUUID).addDraw();
-        markDirty();
     }
 
     private static void markDirty() {

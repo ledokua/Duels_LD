@@ -4,15 +4,12 @@ import eu.pb4.placeholders.api.PlaceholderResult;
 import eu.pb4.placeholders.api.Placeholders;
 import eu.pb4.placeholders.api.PlaceholderContext;
 import net.ledok.duels_ld.DuelsLdMod;
-import net.ledok.duels_ld.manager.MMRManager;
+import net.ledok.duels_ld.api.DuelsApi;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 
 public final class LeaderboardPlaceholders {
     private static final long CACHE_MS = 5000;
@@ -93,8 +90,8 @@ public final class LeaderboardPlaceholders {
     private static List<Entry> getLeaderboard(MinecraftServer server, Mode mode) {
         long now = System.currentTimeMillis();
         if (now - lastUpdateMs > CACHE_MS) {
-            cached1v1 = buildLeaderboard(server, MMRManager.getAll1v1Ratings());
-            cached2v2 = buildLeaderboard(server, MMRManager.getAll2v2Ratings());
+            cached1v1 = buildLeaderboard(server, DuelsApi.Mode.ONE_V_ONE);
+            cached2v2 = buildLeaderboard(server, DuelsApi.Mode.TWO_V_TWO);
             cachedArenas = buildArenaList();
             lastUpdateMs = now;
         }
@@ -125,8 +122,8 @@ public final class LeaderboardPlaceholders {
         if (now - lastUpdateMs > CACHE_MS) {
             MinecraftServer server = net.ledok.duels_ld.manager.ArenaManager.getServer();
             if (server != null) {
-                cached1v1 = buildLeaderboard(server, MMRManager.getAll1v1Ratings());
-                cached2v2 = buildLeaderboard(server, MMRManager.getAll2v2Ratings());
+                cached1v1 = buildLeaderboard(server, DuelsApi.Mode.ONE_V_ONE);
+                cached2v2 = buildLeaderboard(server, DuelsApi.Mode.TWO_V_TWO);
             }
             cachedArenas = buildArenaList();
             lastUpdateMs = now;
@@ -169,24 +166,13 @@ public final class LeaderboardPlaceholders {
         return out;
     }
 
-    private static List<Entry> buildLeaderboard(MinecraftServer server, Map<UUID, Integer> ratings) {
-        if (ratings.isEmpty()) {
+    private static List<Entry> buildLeaderboard(MinecraftServer server, DuelsApi.Mode mode) {
+        if (server == null) {
             return List.of();
         }
-        List<Map.Entry<UUID, Integer>> sorted = new ArrayList<>(ratings.entrySet());
-        sorted.sort(Comparator.comparingInt((Map.Entry<UUID, Integer> e) -> e.getValue()).reversed());
-        int count = Math.min(10, sorted.size());
-        List<Entry> out = new ArrayList<>(count);
-        for (int i = 0; i < count; i++) {
-            Map.Entry<UUID, Integer> entry = sorted.get(i);
-            String name = "Unknown";
-            if (server != null) {
-                var profile = server.getProfileCache().get(entry.getKey());
-                if (profile.isPresent()) {
-                    name = profile.get().getName();
-                }
-            }
-            out.add(new Entry(name, entry.getValue()));
+        List<Entry> out = new ArrayList<>();
+        for (DuelsApi.LeaderboardEntry entry : DuelsApi.leaderboard(server, mode, 10)) {
+            out.add(new Entry(entry.name(), entry.rating()));
         }
         return out;
     }

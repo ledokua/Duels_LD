@@ -1,60 +1,34 @@
 package net.ledok.duels_ld.client;
 
-import io.wispforest.owo.ui.base.BaseOwoScreen;
-import io.wispforest.owo.ui.component.ButtonComponent;
-import io.wispforest.owo.ui.component.Components;
-import io.wispforest.owo.ui.component.LabelComponent;
-import io.wispforest.owo.ui.component.TextBoxComponent;
-import io.wispforest.owo.ui.container.Containers;
-import io.wispforest.owo.ui.container.FlowLayout;
-import io.wispforest.owo.ui.container.ScrollContainer;
-import io.wispforest.owo.ui.core.Color;
-import io.wispforest.owo.ui.core.HorizontalAlignment;
-import io.wispforest.owo.ui.core.Insets;
-import io.wispforest.owo.ui.core.OwoUIAdapter;
-import io.wispforest.owo.ui.core.Sizing;
-import io.wispforest.owo.ui.core.Surface;
-import io.wispforest.owo.ui.core.VerticalAlignment;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.ledok.duels_ld.network.ArenaActionPayload;
 import net.ledok.duels_ld.network.ArenaListPayload;
+import net.ledok.vectorlib.client.canvas.TextNode;
+import net.ledok.vectorlib.client.canvas.layout.Align;
+import net.ledok.vectorlib.client.canvas.layout.Flex;
+import net.ledok.vectorlib.client.canvas.layout.Insets;
+import net.ledok.vectorlib.client.canvas.layout.Sizing;
+import net.ledok.vectorlib.client.canvas.widget.Button;
+import net.ledok.vectorlib.client.canvas.widget.TextField;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
-import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
-import java.util.function.Consumer;
 
-/** Op-only arena manager, styled to match the Arenas_LD raid/dungeon screens (owo-lib). */
-public class ArenaManagerScreen extends BaseOwoScreen<FlowLayout> {
+/** Op-only arena manager, styled to match the Arenas_LD raid/dungeon screens (flat dark theme). */
+public class ArenaManagerScreen extends DuelsScreen {
 
-    private static final int BG          = 0xFF070E14;
-    private static final int PANEL       = 0xFF121922;
-    private static final int PANEL_2     = 0xFF0C1218;
-    private static final int HAIRLINE    = 0xFF283442;
-    private static final int HAIRLINE_HI = 0xFF3A4A5C;
-    private static final int INK         = 0xFFE8EEF5;
-    private static final int INK_MID     = 0xFF9AA8B8;
-    private static final int INK_DIM     = 0xFF5F6E80;
-    private static final int GOOD        = 0xFF86D36C;
-    private static final int DANGER      = 0xFFE8624A;
-    private static final int WARN        = 0xFFF5C84B;
-    private static final int ACCENT      = 0xFFA98BE8;
-    private static final int ACCENT_DARK = 0xFF6C4FB5;
-    private static final int DANGER_DARK = 0xFF8F3A2C;
+    private static final int BG = 0xFF070E14;
 
     private static List<ArenaListPayload.Entry> entries = List.of();
     private static boolean wandMode = false;
 
-    private FlowLayout contentArea;
-    private LabelComponent headerCount;
-    private TextBoxComponent createField;
     private String createDraft = "";
     private String renaming = null;
     private String renameDraft = "";
 
     public ArenaManagerScreen() {
-        super(Component.translatable("duels_ld.screen.arena.title"));
+        super(Component.translatable("duels_ld.screen.arena.title"), UiTheme.MODERN, 420, 520, 280, 400, BG);
     }
 
     /** Entry point from the network receiver: opens the screen (manager or wand) or refreshes it. */
@@ -64,215 +38,142 @@ public class ArenaManagerScreen extends BaseOwoScreen<FlowLayout> {
         if (target == ArenaListPayload.OPEN_GUI || target == ArenaListPayload.OPEN_WAND) {
             wandMode = target == ArenaListPayload.OPEN_WAND;
             if (mc.screen instanceof ArenaManagerScreen s) {
-                s.rebuildContent();
+                s.rebuild();
             } else {
                 mc.setScreen(new ArenaManagerScreen());
             }
         } else if (mc.screen instanceof ArenaManagerScreen s) {
-            s.rebuildContent();
+            s.rebuild();
         }
     }
 
-    @Override
-    protected @NotNull OwoUIAdapter<FlowLayout> createAdapter() {
-        return OwoUIAdapter.create(this, Containers::verticalFlow);
+    /** Drops the server-sent arena list on disconnect; wandMode is a client UI toggle and survives. */
+    public static void resetSessionState() {
+        entries = List.of();
     }
 
     @Override
-    protected void build(FlowLayout root) {
-        root.surface(Surface.flat(BG));
-        root.alignment(HorizontalAlignment.CENTER, VerticalAlignment.CENTER);
+    protected void build(Flex shell) {
+        Flex info = Flex.column().gap(3);
+        info.item(text(Component.translatable("duels_ld.screen.arena.title"), T.ink));
+        info.item(text(Component.translatable("duels_ld.screen.arena.count", entries.size()), T.inkDim));
+        Flex header = header(info);
+        header.item(closeButton());
+        shell.item(header);
+        shell.item(buildToolbar());
 
-        int shellWidth = Math.max(420, Math.min(520, this.width - 24));
-        int shellHeight = Math.max(280, Math.min(400, this.height - 24));
-        FlowLayout shell = Containers.verticalFlow(Sizing.fixed(shellWidth), Sizing.fixed(shellHeight));
-        shell.surface(Surface.flat(PANEL).and(Surface.outline(HAIRLINE_HI)));
-
-        shell.child(buildHeader());
-        shell.child(buildToolbar());
-
-        contentArea = Containers.verticalFlow(Sizing.fill(100), Sizing.content());
-        contentArea.surface(Surface.flat(PANEL));
-        contentArea.padding(Insets.of(8));
-        contentArea.gap(5);
-        ScrollContainer<FlowLayout> scroll = Containers.verticalScroll(Sizing.fill(100), Sizing.expand(), contentArea);
-        scroll.surface(Surface.flat(PANEL));
-        scroll.scrollbar(ScrollContainer.Scrollbar.vanillaFlat());
-        scroll.scrollbarThiccness(8);
-        scroll.scrollStep(18);
-        shell.child(scroll);
-
-        root.child(shell);
-        rebuildContent();
+        Flex content = scrollBody(shell, Insets.of(8), 5);
+        if (entries.isEmpty()) {
+            content.item(text(Component.translatable("duels_ld.screen.arena.empty"), T.inkDim));
+            return;
+        }
+        for (ArenaListPayload.Entry e : entries) {
+            content.item(arenaRow(e));
+        }
     }
 
-    private FlowLayout buildHeader() {
-        FlowLayout header = Containers.horizontalFlow(Sizing.fill(100), Sizing.fixed(46));
-        header.surface(Surface.flat(PANEL_2));
-        header.padding(Insets.of(8, 8, 10, 10));
-        header.gap(10);
-        header.alignment(HorizontalAlignment.LEFT, VerticalAlignment.CENTER);
+    private Flex buildToolbar() {
+        Flex bar = Flex.row().gap(6).padding(Insets.of(6, 8, 6, 8)).alignItems(Align.CENTER);
+        bar.sizing(Sizing.fill(), Sizing.content());
+        bar.background(T.bar());
 
-        FlowLayout mark = Containers.verticalFlow(Sizing.fixed(20), Sizing.fixed(20));
-        mark.surface(Surface.flat(ACCENT).and(Surface.outline(ACCENT_DARK)));
-        header.child(mark);
-
-        FlowLayout info = Containers.verticalFlow(Sizing.content(), Sizing.content());
-        info.gap(3);
-        info.child(text(Component.translatable("duels_ld.screen.arena.title"), INK));
-        headerCount = Components.label(Component.empty());
-        headerCount.color(Color.ofArgb(INK_DIM));
-        info.child(headerCount);
-        header.child(info);
-
-        header.child(Containers.horizontalFlow(Sizing.expand(), Sizing.content()));
-        ButtonComponent close = styledButton(Component.literal("×"), PANEL, ACCENT, HAIRLINE, b -> onClose());
-        close.sizing(Sizing.fixed(22), Sizing.fixed(18));
-        header.child(close);
-        return header;
-    }
-
-    private FlowLayout buildToolbar() {
-        FlowLayout bar = Containers.horizontalFlow(Sizing.fill(100), Sizing.content());
-        bar.surface(Surface.flat(PANEL_2));
-        bar.padding(Insets.of(6, 6, 8, 8));
-        bar.gap(6);
-        bar.alignment(HorizontalAlignment.LEFT, VerticalAlignment.CENTER);
-
-        FlowLayout fieldWrap = Containers.horizontalFlow(Sizing.expand(), Sizing.content());
-        fieldWrap.surface(Surface.flat(PANEL).and(Surface.outline(HAIRLINE)));
-        fieldWrap.alignment(HorizontalAlignment.LEFT, VerticalAlignment.CENTER);
-        FlowLayout accent = Containers.verticalFlow(Sizing.fixed(2), Sizing.fixed(20));
-        accent.surface(Surface.flat(ACCENT));
-        fieldWrap.child(accent);
-        createField = Components.textBox(Sizing.expand(), createDraft);
-        createField.verticalSizing(Sizing.fixed(18));
-        createField.onChanged().subscribe(v -> createDraft = v);
-        fieldWrap.child(createField);
-        bar.child(fieldWrap);
-
-        ButtonComponent create = styledButton(Component.translatable("duels_ld.screen.arena.create"), ACCENT_DARK, ACCENT, ACCENT, b -> {
-            String name = createField.getValue().trim();
+        TextField createField = new TextField(100, createDraft, v -> createDraft = v);
+        createField.sizing(Sizing.expand(), Sizing.fixed(20));
+        Runnable create = () -> {
+            String name = createDraft.trim();
             if (!name.isEmpty()) {
                 send("create", name, "");
                 createDraft = "";
                 createField.text("");
             }
-        });
-        create.sizing(Sizing.fixed(70), Sizing.fixed(20));
-        bar.child(create);
+        };
+        createField.onSubmit(create);
+        bar.item(createField);
+        bar.item(button(Component.translatable("duels_ld.screen.arena.create"), 70, 20, T.accentDark, T.accent, T.accent, create));
         return bar;
     }
 
-    private void rebuildContent() {
-        if (contentArea == null) {
-            return;
-        }
-        contentArea.clearChildren();
-        if (headerCount != null) {
-            headerCount.text(Component.translatable("duels_ld.screen.arena.count", entries.size()));
-        }
-        if (entries.isEmpty()) {
-            contentArea.child(text(Component.translatable("duels_ld.screen.arena.empty"), INK_DIM));
-            return;
-        }
-        for (ArenaListPayload.Entry e : entries) {
-            contentArea.child(arenaRow(e));
-        }
-    }
-
-    private FlowLayout arenaRow(ArenaListPayload.Entry e) {
-        FlowLayout row = Containers.verticalFlow(Sizing.fill(100), Sizing.content());
-        row.surface(Surface.flat(PANEL_2).and(Surface.outline(HAIRLINE)));
-        row.padding(Insets.of(6));
-        row.gap(3);
+    private Flex arenaRow(ArenaListPayload.Entry e) {
+        Flex row = Flex.column().gap(3).padding(Insets.of(6));
+        row.sizing(Sizing.fill(), Sizing.content());
+        row.backgroundFill(T.panel2, T.hairline, 1);
 
         // Title line: name + active state
-        FlowLayout titleLine = Containers.horizontalFlow(Sizing.fill(100), Sizing.content());
-        titleLine.gap(6);
-        titleLine.alignment(HorizontalAlignment.LEFT, VerticalAlignment.CENTER);
-        titleLine.child(text(Component.literal(e.name()), INK));
-        titleLine.child(Containers.horizontalFlow(Sizing.expand(), Sizing.content()));
+        Flex titleLine = Flex.row().gap(6).alignItems(Align.CENTER);
+        titleLine.sizing(Sizing.fill(), Sizing.content());
+        titleLine.item(text(Component.literal(e.name()), T.ink));
+        titleLine.spacer();
         if (e.active()) {
-            titleLine.child(text(Component.translatable("duels_ld.screen.arena.in_use"), WARN));
+            titleLine.item(text(Component.translatable("duels_ld.screen.arena.in_use"), T.gold));
         }
-        row.child(titleLine);
+        row.item(titleLine);
 
         // Meta line: dimension + readiness badges + spawn counts
-        FlowLayout meta = Containers.horizontalFlow(Sizing.fill(100), Sizing.content());
-        meta.gap(8);
-        meta.alignment(HorizontalAlignment.LEFT, VerticalAlignment.CENTER);
-        meta.child(text(Component.literal(e.dimensionId()), INK_DIM));
-        meta.child(badge("1v1", e.ready1v1()));
-        meta.child(badge("2v2", e.ready2v2()));
-        meta.child(text(Component.translatable("duels_ld.screen.arena.spawns", e.team1(), e.team2()), INK_MID));
+        Flex meta = Flex.row().gap(8).alignItems(Align.CENTER);
+        meta.sizing(Sizing.fill(), Sizing.content());
+        meta.item(text(Component.literal(e.dimensionId()), T.inkDim));
+        meta.item(badge("1v1", e.ready1v1()));
+        meta.item(badge("2v2", e.ready2v2()));
+        meta.item(text(Component.translatable("duels_ld.screen.arena.spawns", e.team1(), e.team2()), T.inkMid));
         if (!e.hasBounds()) {
-            meta.child(text(Component.translatable("duels_ld.screen.arena.no_bounds"), WARN));
+            meta.item(text(Component.translatable("duels_ld.screen.arena.no_bounds"), T.gold));
         }
         if (e.outside() > 0) {
-            meta.child(text(Component.translatable("duels_ld.screen.arena.outside", e.outside()), DANGER));
+            meta.item(text(Component.translatable("duels_ld.screen.arena.outside", e.outside()), T.danger));
         }
-        row.child(meta);
+        row.item(meta);
 
         if (e.name().equals(renaming)) {
-            row.child(renameRow(e));
+            row.item(renameRow(e));
             return row;
         }
 
         // Action buttons
-        FlowLayout actions = Containers.horizontalFlow(Sizing.fill(100), Sizing.content());
-        actions.gap(4);
-        actions.alignment(HorizontalAlignment.LEFT, VerticalAlignment.CENTER);
+        Flex actions = Flex.row().gap(4).alignItems(Align.CENTER);
+        actions.sizing(Sizing.fill(), Sizing.content());
         if (wandMode) {
-            actions.child(action(Component.translatable("duels_ld.screen.arena.select"), 50, ACCENT, ACCENT, b -> {
+            actions.item(action(Component.translatable("duels_ld.screen.arena.select"), 50, T.accent, T.accent, () -> {
                 send("bind", e.name(), "");
                 onClose();
             }));
         }
-        actions.child(action(Component.translatable("duels_ld.screen.arena.tp"), 36, ACCENT_DARK, ACCENT, b -> send("tp", e.name(), "")));
-        actions.child(action(Component.translatable("duels_ld.screen.arena.wand"), 46, ACCENT_DARK, ACCENT, b -> {
+        actions.item(action(Component.translatable("duels_ld.screen.arena.tp"), 36, T.accentDark, T.accent, () -> send("tp", e.name(), "")));
+        actions.item(action(Component.translatable("duels_ld.screen.arena.wand"), 46, T.accentDark, T.accent, () -> {
             send("wand", e.name(), "");
             onClose();
         }));
-        actions.child(action(Component.translatable("duels_ld.screen.arena.rename"), 50, ACCENT_DARK, ACCENT, b -> {
+        actions.item(action(Component.translatable("duels_ld.screen.arena.rename"), 50, T.accentDark, T.accent, () -> {
             renaming = e.name();
             renameDraft = e.name();
-            rebuildContent();
+            rebuild();
         }));
-        actions.child(Containers.horizontalFlow(Sizing.expand(), Sizing.content()));
-        actions.child(action(Component.translatable("duels_ld.screen.arena.delete"), 38, DANGER_DARK, DANGER, b -> send("delete", e.name(), "")));
-        row.child(actions);
+        actions.spacer();
+        actions.item(action(Component.translatable("duels_ld.screen.arena.delete"), 38, T.dangerDark, T.danger, () -> send("delete", e.name(), "")));
+        row.item(actions);
         return row;
     }
 
-    private FlowLayout renameRow(ArenaListPayload.Entry e) {
-        FlowLayout line = Containers.horizontalFlow(Sizing.fill(100), Sizing.content());
-        line.gap(4);
-        line.alignment(HorizontalAlignment.LEFT, VerticalAlignment.CENTER);
+    private Flex renameRow(ArenaListPayload.Entry e) {
+        Flex line = Flex.row().gap(4).alignItems(Align.CENTER);
+        line.sizing(Sizing.fill(), Sizing.content());
 
-        FlowLayout fieldWrap = Containers.horizontalFlow(Sizing.expand(), Sizing.content());
-        fieldWrap.surface(Surface.flat(PANEL).and(Surface.outline(HAIRLINE)));
-        fieldWrap.alignment(HorizontalAlignment.LEFT, VerticalAlignment.CENTER);
-        FlowLayout accent = Containers.verticalFlow(Sizing.fixed(2), Sizing.fixed(18));
-        accent.surface(Surface.flat(ACCENT));
-        fieldWrap.child(accent);
-        TextBoxComponent field = Components.textBox(Sizing.expand(), renameDraft);
-        field.verticalSizing(Sizing.fixed(16));
-        field.onChanged().subscribe(v -> renameDraft = v);
-        fieldWrap.child(field);
-        line.child(fieldWrap);
-
-        line.child(action(Component.literal("✓"), 22, ACCENT_DARK, ACCENT, b -> {
-            String newName = field.getValue().trim();
+        TextField field = new TextField(100, renameDraft, v -> renameDraft = v);
+        field.sizing(Sizing.expand(), Sizing.fixed(18));
+        Runnable confirm = () -> {
+            String newName = renameDraft.trim();
             if (!newName.isEmpty() && !newName.equals(e.name())) {
                 send("rename", e.name(), newName);
             }
             renaming = null;
-            rebuildContent();
-        }));
-        line.child(action(Component.literal("✗"), 22, DANGER_DARK, DANGER, b -> {
+            rebuild();
+        };
+        field.onSubmit(confirm);
+        line.item(field);
+
+        line.item(action(Component.literal("✓"), 22, T.accentDark, T.accent, confirm));
+        line.item(action(Component.literal("✗"), 22, T.dangerDark, T.danger, () -> {
             renaming = null;
-            rebuildContent();
+            rebuild();
         }));
         return line;
     }
@@ -283,31 +184,11 @@ public class ArenaManagerScreen extends BaseOwoScreen<FlowLayout> {
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    private LabelComponent badge(String label, boolean ok) {
-        return text(Component.literal((ok ? "✓ " : "✗ ") + label), ok ? GOOD : DANGER);
+    private TextNode badge(String label, boolean ok) {
+        return text(Component.literal((ok ? "✓ " : "✗ ") + label), ok ? T.good : T.danger);
     }
 
-    private ButtonComponent action(Component label, int width, int base, int hover, Consumer<ButtonComponent> onClick) {
-        ButtonComponent button = styledButton(label, base, hover, hover, onClick);
-        button.sizing(Sizing.fixed(width), Sizing.fixed(16));
-        return button;
-    }
-
-    private LabelComponent text(Component component, int color) {
-        LabelComponent label = Components.label(component);
-        label.color(Color.ofArgb(color));
-        return label;
-    }
-
-    private ButtonComponent styledButton(Component text, int base, int hover, int border, Consumer<ButtonComponent> action) {
-        ButtonComponent button = Components.button(text, action);
-        button.sizing(Sizing.content(), Sizing.fixed(18));
-        button.renderer((context, rendered, delta) -> {
-            int fill = rendered.active() ? (rendered.isHoveredOrFocused() ? hover : base) : PANEL;
-            int outline = rendered.active() ? border : HAIRLINE;
-            context.fill(rendered.getX(), rendered.getY(), rendered.getX() + rendered.getWidth(), rendered.getY() + rendered.getHeight(), fill);
-            context.drawRectOutline(rendered.getX(), rendered.getY(), rendered.getWidth(), rendered.getHeight(), outline);
-        });
-        return button;
+    private Button action(Component label, float width, int base, int hover, Runnable onClick) {
+        return button(label, width, 16, base, hover, hover, onClick);
     }
 }

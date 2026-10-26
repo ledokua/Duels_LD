@@ -3,28 +3,36 @@ package net.ledok.duels_ld.manager;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.ledok.duels_ld.api.DuelsApi;
+import net.ledok.duels_ld.integration.EdenBridge;
 import net.ledok.duels_ld.network.JoinQueuePayload;
 import net.ledok.duels_ld.network.LeaveQueuePayload;
 import net.ledok.duels_ld.network.OpenLobbyRequestPayload;
 import net.ledok.duels_ld.network.OpenLobbyScreenPayload;
+import net.ledok.duels_ld.network.PartyStatusPayload;
 import net.ledok.duels_ld.network.QueueStatePayload;
+import net.ledok.duels_ld.network.RequestEloPayload;
+import net.ledok.duels_ld.network.SyncEloPayload;
 import net.ledok.duels_ld.network.UpdateMatchmakingSettingsPayload;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
 public class MatchmakingManager {
     private static final ArrayDeque<QueueEntry> queue1v1 = new ArrayDeque<>();
     private static final ArrayDeque<QueueEntry> queue2v2 = new ArrayDeque<>();
-    private static final ArrayDeque<QueueEntry> partyQueue2v2 = new ArrayDeque<>(); // leader ids
+    // Eden parties queued for 2v2, keyed by party id (the leader can change while queued).
+    private static final ArrayDeque<PartyEntry> partyQueue2v2 = new ArrayDeque<>();
     private static final ArrayDeque<List<UUID>> pending1v1 = new ArrayDeque<>();
     private static final ArrayDeque<List<UUID>> pending2v2 = new ArrayDeque<>();
 
@@ -37,6 +45,21 @@ public class MatchmakingManager {
         });
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             sendQueueState(handler.getPlayer());
+        });
+        // Eden parties are formed in Eden's hub. Any membership change (join, leave, kick, disband)
+        // drops that party from the queue; the queued member snapshot would no longer be valid.
+        EdenBridge.onMembershipChange(MatchmakingManager::onEdenPartyChanged);
+
+        ServerPlayNetworking.registerGlobalReceiver(RequestEloPayload.TYPE, (payload, context) -> {
+            context.server().execute(() -> {
+                ServerPlayer player = context.player();
+                int elo1 = MMRManager.getRating1v1(player.getUUID());
+                int elo2 = MMRManager.getRating2v2(player.getUUID());
+                PlayerStats stats = StatsManager.find(player.getUUID());
+                ServerPlayNetworking.send(player, new SyncEloPayload(elo1, elo2, record(stats, 1), record(stats, 2)));
+                BattleRewards.sendStatus(player);
+                sendPartyStatus(player);
+            });
         });
 
         ServerPlayNetworking.registerGlobalReceiver(JoinQueuePayload.TYPE, (payload, context) -> {
@@ -54,120 +77,230 @@ public class MatchmakingManager {
     }
 
     public static void joinQueue(ServerPlayer player, int mode) {
-        if (ActivityManager.isPlayerBusy(player.getUUID()) || DuelManager.isInDuel(player)) {
-            player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.cannot_queue_busy"));
-            return;
+        joinQueue(player, mode == JoinQueuePayload.MODE_2V2 ? DuelsApi.Mode.TWO_V_TWO : DuelsApi.Mode.ONE_V_ONE, true);
+    }
+
+    /**
+     * Puts the player (or, for 2v2, their Eden party) in a queue. {@code announce} sends the
+     * outcome to the player's chat; API callers pass false and show the result themselves.
+     * Partymates are told their leader started searching either way.
+     */
+    public static DuelsApi.QueueResult joinQueue(ServerPlayer player, DuelsApi.Mode mode, boolean announce) {
+        DuelsApi.QueueResult result = tryJoinQueue(player, mode);
+        if (announce) {
+            String key = switch (result) {
+                case QUEUED -> mode == DuelsApi.Mode.ONE_V_ONE ? "duels_ld.matchmaking.queued_1v1"
+                    : findPartyOf(player.getUUID()) != null ? "duels_ld.matchmaking.party_queued"
+                    : "duels_ld.matchmaking.queued_2v2";
+                case ALREADY_QUEUED -> "duels_ld.matchmaking.already_queued";
+                case BUSY, IN_MATCH, PENDING_MATCH -> "duels_ld.matchmaking.cannot_queue_busy";
+                case NOT_PARTY_LEADER -> "duels_ld.matchmaking.party_leader_required";
+                case PARTY_WRONG_SIZE -> "duels_ld.matchmaking.party_size_required";
+                case PARTY_MEMBER_UNAVAILABLE -> "duels_ld.matchmaking.party_member_unavailable";
+                case DISABLED -> "duels_ld.matchmaking.mode_disabled";
+            };
+            if (result == DuelsApi.QueueResult.PARTY_WRONG_SIZE) {
+                int size = EdenBridge.getParty(player.server, player.getUUID()).map(p -> p.members().size()).orElse(0);
+                player.sendSystemMessage(Component.translatable(key, size));
+            } else {
+                player.sendSystemMessage(Component.translatable(key));
+            }
+        }
+        return result;
+    }
+
+    private static DuelsApi.QueueResult tryJoinQueue(ServerPlayer player, DuelsApi.Mode mode) {
+        UUID playerId = player.getUUID();
+        if (DuelManager.isInDuel(player)) {
+            return DuelsApi.QueueResult.IN_MATCH;
         }
         // A player already matched and waiting for a free arena must not re-enter a queue, or they
         // could be matched a second time and their pending match would collapse under the partner.
-        if (containsPending(pending1v1, player.getUUID()) || containsPending(pending2v2, player.getUUID())) {
-            player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.cannot_queue_busy"));
-            return;
+        if (containsPending(pending1v1, playerId) || containsPending(pending2v2, playerId)) {
+            return DuelsApi.QueueResult.PENDING_MATCH;
         }
-        boolean updated = false;
-        if (mode == JoinQueuePayload.MODE_1V1) {
-            if (!containsEntry(queue1v1, player.getUUID())) {
-                queue1v1.add(new QueueEntry(player.getUUID()));
-                player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.queued_1v1"));
-                updated = true;
-            }
-        } else if (mode == JoinQueuePayload.MODE_2V2) {
-            if (PartyManager.isInParty(player.getUUID())) {
-                UUID leader = PartyManager.getLeader(player.getUUID());
-                PartyManager.Party party = PartyManager.getPartyByLeader(leader);
-                if (party == null || party.members.size() != 2) {
-                    player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.party_size_required"));
-                    return;
-                }
-                if (!PartyManager.isLeader(player.getUUID())) {
-                    player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.party_leader_required"));
-                    return;
-                }
-                if (!containsEntry(partyQueue2v2, leader)) {
-                    partyQueue2v2.add(new QueueEntry(leader));
-                    for (UUID member : party.members) {
-                        removeEntry(queue2v2, member);
-                    }
-                    player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.party_queued"));
-                    for (UUID member : party.members) {
-                        if (member.equals(player.getUUID())) {
-                            continue;
-                        }
-                        ServerPlayer target = player.server.getPlayerList().getPlayer(member);
-                        if (target != null) {
-                            target.sendSystemMessage(Component.translatable("duels_ld.matchmaking.party_leader_searching"));
-                            sendQueueState(target);
-                        }
-                    }
-                    sendQueueState(player);
-                }
-                return;
-            }
-            if (!containsEntry(queue2v2, player.getUUID())) {
-                queue2v2.add(new QueueEntry(player.getUUID()));
-                player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.queued_2v2"));
-                updated = true;
-            }
+        if (ActivityManager.isPlayerBusy(playerId)) {
+            return DuelsApi.QueueResult.BUSY;
         }
-        if (updated) {
+        if (!ArenaManager.hasArenaFor(mode.teamSize())) {
+            return DuelsApi.QueueResult.DISABLED;
+        }
+        if (mode == DuelsApi.Mode.ONE_V_ONE) {
+            if (containsEntry(queue1v1, playerId)) {
+                return DuelsApi.QueueResult.ALREADY_QUEUED;
+            }
+            queue1v1.add(new QueueEntry(playerId));
             sendQueueState(player);
+            return DuelsApi.QueueResult.QUEUED;
         }
+        Optional<EdenBridge.Party> edenParty = EdenBridge.getParty(player.server, playerId);
+        if (edenParty.isPresent()) {
+            return joinPartyQueue(player, edenParty.get());
+        }
+        if (containsEntry(queue2v2, playerId)) {
+            return DuelsApi.QueueResult.ALREADY_QUEUED;
+        }
+        queue2v2.add(new QueueEntry(playerId));
+        sendQueueState(player);
+        return DuelsApi.QueueResult.QUEUED;
     }
 
-    public static void leaveAllQueues(UUID playerId) {
-        boolean removed = removeEntry(queue1v1, playerId) | removeEntry(queue2v2, playerId);
-        boolean pendingRemoved = removeFromPending(playerId);
-        boolean partyRemoved = removePartyFromQueue(playerId);
-        if (removed || pendingRemoved || partyRemoved) {
-            MinecraftServer server = ArenaManager.getServer();
-            if (server != null) {
-                ServerPlayer player = server.getPlayerList().getPlayer(playerId);
-                if (player != null) {
-                    sendQueueState(player);
-                }
-                if (partyRemoved) {
-                    sendQueueStateToPartyMembers(playerId, server);
+    private static DuelsApi.QueueResult joinPartyQueue(ServerPlayer player, EdenBridge.Party party) {
+        if (findParty(party.id()) != null) {
+            return DuelsApi.QueueResult.ALREADY_QUEUED;
+        }
+        if (!party.leader().equals(player.getUUID())) {
+            return DuelsApi.QueueResult.NOT_PARTY_LEADER;
+        }
+        // Eden parties can be bigger than a 2v2 team; refuse rather than pick two members.
+        if (party.members().size() != 2) {
+            return DuelsApi.QueueResult.PARTY_WRONG_SIZE;
+        }
+        for (UUID member : party.members()) {
+            if (member.equals(player.getUUID())) {
+                continue;
+            }
+            ServerPlayer online = player.server.getPlayerList().getPlayer(member);
+            if (online == null || ActivityManager.isPlayerBusy(member) || DuelManager.isInDuel(online)
+                || containsPending(pending1v1, member) || containsPending(pending2v2, member)) {
+                return DuelsApi.QueueResult.PARTY_MEMBER_UNAVAILABLE;
+            }
+        }
+        partyQueue2v2.add(new PartyEntry(party.id(), party.members()));
+        for (UUID member : party.members()) {
+            removeEntry(queue2v2, member);
+        }
+        for (UUID member : party.members()) {
+            ServerPlayer target = player.server.getPlayerList().getPlayer(member);
+            if (target == null) {
+                continue;
+            }
+            if (!member.equals(player.getUUID())) {
+                target.sendSystemMessage(Component.translatable("duels_ld.matchmaking.party_leader_searching"));
+            }
+            sendQueueState(target);
+        }
+        return DuelsApi.QueueResult.QUEUED;
+    }
+
+    /**
+     * Eden fires this mid-update, so the reaction is deferred to the next server task: by then the
+     * party (if it still exists) reflects the change and the status sent to clients is current.
+     */
+    private static void onEdenPartyChanged(UUID partyId, UUID player) {
+        MinecraftServer server = ArenaManager.getServer();
+        if (server == null) {
+            return;
+        }
+        server.execute(() -> {
+            PartyEntry entry = findParty(partyId);
+            Set<UUID> affected = new HashSet<>();
+            affected.add(player);
+            if (entry != null) {
+                partyQueue2v2.remove(entry);
+                affected.addAll(entry.members);
+            }
+            EdenBridge.getParty(server, player).ifPresent(party -> affected.addAll(party.members()));
+            // Whoever is left in the party the player just left still needs a fresh status.
+            for (ServerPlayer online : server.getPlayerList().getPlayers()) {
+                if (!affected.contains(online.getUUID())
+                    && EdenBridge.getParty(server, online.getUUID()).map(p -> p.id().equals(partyId)).orElse(false)) {
+                    affected.add(online.getUUID());
                 }
             }
+            for (UUID id : affected) {
+                ServerPlayer online = server.getPlayerList().getPlayer(id);
+                if (online == null) {
+                    continue;
+                }
+                if (entry != null) {
+                    online.sendSystemMessage(Component.translatable("duels_ld.matchmaking.party_changed"));
+                    sendQueueState(online);
+                }
+                sendPartyStatus(online);
+            }
+        });
+    }
+
+    /** Disconnect cleanup: drops the player from every queue and pending match, silently. */
+    public static void leaveAllQueues(UUID playerId) {
+        MinecraftServer server = ArenaManager.getServer();
+        boolean removed = removeEntry(queue1v1, playerId) | removeEntry(queue2v2, playerId);
+        boolean pendingRemoved = removeFromPending(playerId);
+        PartyEntry partyRemoved = removePartyFromQueue(playerId);
+        if (!removed && !pendingRemoved && partyRemoved == null) {
+            return;
+        }
+        ServerPlayer player = server == null ? null : server.getPlayerList().getPlayer(playerId);
+        if (player != null) {
+            sendQueueState(player);
+        } else {
+            DuelsApi.fireQueueChanged(playerId);
+        }
+        if (partyRemoved != null && server != null) {
+            sendQueueStateToMembers(partyRemoved, server);
         }
     }
 
     public static void leaveAllQueues(ServerPlayer player) {
-        boolean removed = removeEntry(queue1v1, player.getUUID()) | removeEntry(queue2v2, player.getUUID());
-        boolean pendingRemoved = removeFromPending(player.getUUID());
-        boolean partyRemoved = removePartyFromQueue(player.getUUID());
-        if (removed || pendingRemoved || partyRemoved) {
-            player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.left_queue"));
-            sendQueueState(player);
-            if (partyRemoved) {
-                sendQueueStateToPartyMembers(player.getUUID(), player.server);
-            }
-        } else {
-            player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.not_in_queue"));
-        }
+        leaveQueue(player, null, true);
     }
 
     public static void leaveQueue(ServerPlayer player, int mode) {
-        boolean removed = false;
+        DuelsApi.Mode apiMode = mode == LeaveQueuePayload.MODE_1V1 ? DuelsApi.Mode.ONE_V_ONE
+            : mode == LeaveQueuePayload.MODE_2V2 ? DuelsApi.Mode.TWO_V_TWO
+            : null;
+        leaveQueue(player, apiMode, true);
+    }
+
+    /**
+     * Leaves one queue, or every queue and pending match when {@code mode} is null. Leaving 2v2
+     * takes the whole Eden party out (any member may cancel).
+     */
+    public static void leaveQueue(ServerPlayer player, @Nullable DuelsApi.Mode mode, boolean announce) {
         UUID playerId = player.getUUID();
-        if (mode == LeaveQueuePayload.MODE_1V1) {
-            removed = removeEntry(queue1v1, playerId) | removeFromPendingList(pending1v1, playerId, true);
-        } else if (mode == LeaveQueuePayload.MODE_2V2) {
-            boolean partyRemoved = removePartyFromQueue(playerId);
-            removed = removeEntry(queue2v2, playerId) | partyRemoved | removeFromPendingList(pending2v2, playerId, false);
-            if (partyRemoved) {
-                sendQueueStateToPartyMembers(playerId, player.server);
-            }
-        } else {
-            leaveAllQueues(player);
-            return;
+        boolean removed = false;
+        PartyEntry partyRemoved = null;
+        if (mode == null || mode == DuelsApi.Mode.ONE_V_ONE) {
+            removed |= removeEntry(queue1v1, playerId) | removeFromPendingList(pending1v1, playerId, true);
+        }
+        if (mode == null || mode == DuelsApi.Mode.TWO_V_TWO) {
+            partyRemoved = removePartyFromQueue(playerId);
+            removed |= removeEntry(queue2v2, playerId) | partyRemoved != null
+                | removeFromPendingList(pending2v2, playerId, false);
         }
         if (removed) {
-            player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.left_selected_queue"));
             sendQueueState(player);
-        } else {
-            player.sendSystemMessage(Component.translatable("duels_ld.matchmaking.not_in_queue"));
+            if (partyRemoved != null) {
+                sendQueueStateToMembers(partyRemoved, player.server);
+            }
         }
+        if (announce) {
+            player.sendSystemMessage(Component.translatable(!removed ? "duels_ld.matchmaking.not_in_queue"
+                : mode == null ? "duels_ld.matchmaking.left_queue"
+                : "duels_ld.matchmaking.left_selected_queue"));
+        }
+    }
+
+    /** Snapshot for the API. */
+    public static DuelsApi.QueueState queueState(UUID playerId) {
+        boolean pending1 = containsPending(pending1v1, playerId);
+        boolean pending2 = containsPending(pending2v2, playerId);
+        QueueEntry solo1 = findEntry(queue1v1, playerId);
+        QueueEntry solo2 = findEntry(queue2v2, playerId);
+        PartyEntry party = findPartyOf(playerId);
+        boolean in1 = solo1 != null || pending1;
+        boolean in2 = solo2 != null || party != null || pending2;
+        if (!in1 && !in2) {
+            return DuelsApi.QueueState.NONE;
+        }
+        long joinedAt = Long.MAX_VALUE;
+        if (solo1 != null) joinedAt = Math.min(joinedAt, solo1.joinTime);
+        if (solo2 != null) joinedAt = Math.min(joinedAt, solo2.joinTime);
+        if (party != null) joinedAt = Math.min(joinedAt, party.joinTime);
+        boolean searching = joinedAt != Long.MAX_VALUE;
+        return new DuelsApi.QueueState(in1, in2, pending1 || pending2, searching ? joinedAt : -1L,
+            party != null, searching ? getCurrentRange(joinedAt) : 0);
     }
 
     public static int getQueued1v1Count() {
@@ -448,12 +581,13 @@ public class MatchmakingManager {
         removeEntry(queue2v2, playerId);
     }
 
-    private static boolean removePartyFromQueue(UUID playerId) {
-        UUID leader = PartyManager.getLeader(playerId);
-        if (leader == null) {
-            return false;
+    /** Removes the queued party {@code playerId} belongs to (any member may cancel); returns it, or null. */
+    private static PartyEntry removePartyFromQueue(UUID playerId) {
+        PartyEntry entry = findPartyOf(playerId);
+        if (entry != null) {
+            partyQueue2v2.remove(entry);
         }
-        return removeEntry(partyQueue2v2, leader);
+        return entry;
     }
 
     private static boolean removeFromPending(UUID playerId) {
@@ -511,18 +645,13 @@ public class MatchmakingManager {
     }
 
     private static void cleanPartyQueue(MinecraftServer server) {
-        Iterator<QueueEntry> iterator = partyQueue2v2.iterator();
+        // Membership changes are handled by the Eden listener; this only drops parties with a
+        // member who went offline or got busy elsewhere.
+        Iterator<PartyEntry> iterator = partyQueue2v2.iterator();
         while (iterator.hasNext()) {
-            QueueEntry entry = iterator.next();
-            UUID leader = entry.playerId;
-            PartyManager.Party party = PartyManager.getPartyByLeader(leader);
-            if (party == null || party.members.size() != 2) {
-                iterator.remove();
-                sendQueueStateToPartyMembers(leader, server);
-                continue;
-            }
+            PartyEntry entry = iterator.next();
             boolean allOnline = true;
-            for (UUID member : party.members) {
+            for (UUID member : entry.members) {
                 if (server.getPlayerList().getPlayer(member) == null || ActivityManager.isPlayerBusy(member)) {
                     allOnline = false;
                     break;
@@ -530,7 +659,7 @@ public class MatchmakingManager {
             }
             if (!allOnline) {
                 iterator.remove();
-                sendQueueStateToPartyMembers(leader, server);
+                sendQueueStateToMembers(entry, server);
             }
         }
     }
@@ -539,39 +668,25 @@ public class MatchmakingManager {
         if (partyQueue2v2.size() < 2) {
             return false;
         }
-        QueueEntry seeker = partyQueue2v2.peek();
+        PartyEntry seeker = partyQueue2v2.peek();
         if (seeker == null) {
             return false;
         }
-        QueueEntry best = findBestPartyOpponent(seeker, partyQueue2v2);
+        PartyEntry best = findBestPartyOpponent(seeker, partyQueue2v2);
         if (best == null) {
             return false;
         }
         partyQueue2v2.remove(seeker);
         partyQueue2v2.remove(best);
-
-        PartyManager.Party partyA = PartyManager.getPartyByLeader(seeker.playerId);
-        PartyManager.Party partyB = PartyManager.getPartyByLeader(best.playerId);
-        if (partyA == null || partyB == null || partyA.members.size() != 2 || partyB.members.size() != 2) {
-            return false;
-        }
-
-        List<UUID> team1 = new ArrayList<>(partyA.members);
-        List<UUID> team2 = new ArrayList<>(partyB.members);
-        return start2v2Match(server, team1, team2);
+        return start2v2Match(server, seeker.members, best.members);
     }
 
     private static boolean tryMatchPartyWithSolos(MinecraftServer server) {
         if (partyQueue2v2.isEmpty() || queue2v2.size() < 2) {
             return false;
         }
-        QueueEntry leaderEntry = partyQueue2v2.peek();
-        if (leaderEntry == null) {
-            return false;
-        }
-        PartyManager.Party party = PartyManager.getPartyByLeader(leaderEntry.playerId);
-        if (party == null || party.members.size() != 2) {
-            partyQueue2v2.poll();
+        PartyEntry partyEntry = partyQueue2v2.peek();
+        if (partyEntry == null) {
             return false;
         }
         QueueEntry solo1Entry = queue2v2.peek();
@@ -579,12 +694,12 @@ public class MatchmakingManager {
         if (solo1Entry == null || solo2Entry == null) {
             return false;
         }
-        List<UUID> partyTeam = new ArrayList<>(party.members);
+        List<UUID> partyTeam = partyEntry.members;
         List<UUID> soloTeam = List.of(solo1Entry.playerId, solo2Entry.playerId);
 
         int partyRating = averageRating2v2(partyTeam);
         int soloRating = averageRating2v2(soloTeam);
-        int partyRange = getCurrentRange(leaderEntry.joinTime);
+        int partyRange = getCurrentRange(partyEntry.joinTime);
         int soloRange = Math.min(getCurrentRange(solo1Entry.joinTime), getCurrentRange(solo2Entry.joinTime));
         int diff = Math.abs(partyRating - soloRating);
         if (diff > partyRange || diff > soloRange) {
@@ -691,24 +806,16 @@ public class MatchmakingManager {
         return best;
     }
 
-    private static QueueEntry findBestPartyOpponent(QueueEntry seeker, ArrayDeque<QueueEntry> queue) {
-        PartyManager.Party seekerParty = PartyManager.getPartyByLeader(seeker.playerId);
-        if (seekerParty == null || seekerParty.members.size() != 2) {
-            return null;
-        }
-        int seekerRating = averageRating2v2(new ArrayList<>(seekerParty.members));
+    private static PartyEntry findBestPartyOpponent(PartyEntry seeker, ArrayDeque<PartyEntry> queue) {
+        int seekerRating = averageRating2v2(seeker.members);
         int seekerRange = getCurrentRange(seeker.joinTime);
-        QueueEntry best = null;
+        PartyEntry best = null;
         int bestDiff = Integer.MAX_VALUE;
-        for (QueueEntry entry : queue) {
-            if (entry.playerId.equals(seeker.playerId)) {
+        for (PartyEntry entry : queue) {
+            if (entry.partyId.equals(seeker.partyId)) {
                 continue;
             }
-            PartyManager.Party party = PartyManager.getPartyByLeader(entry.playerId);
-            if (party == null || party.members.size() != 2) {
-                continue;
-            }
-            int rating = averageRating2v2(new ArrayList<>(party.members));
+            int rating = averageRating2v2(entry.members);
             int entryRange = getCurrentRange(entry.joinTime);
             int diff = Math.abs(seekerRating - rating);
             if (diff <= seekerRange && diff <= entryRange) {
@@ -764,6 +871,15 @@ public class MatchmakingManager {
         return false;
     }
 
+    private static QueueEntry findEntry(ArrayDeque<QueueEntry> queue, UUID playerId) {
+        for (QueueEntry entry : queue) {
+            if (entry.playerId.equals(playerId)) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
     private static boolean removeEntry(ArrayDeque<QueueEntry> queue, UUID playerId) {
         Iterator<QueueEntry> iterator = queue.iterator();
         while (iterator.hasNext()) {
@@ -785,9 +901,56 @@ public class MatchmakingManager {
         }
     }
 
+    /** A queued Eden party: the id it is keyed by and the two members it had when it queued. */
+    private static class PartyEntry {
+        private final UUID partyId;
+        private final List<UUID> members;
+        private final long joinTime;
+
+        private PartyEntry(UUID partyId, List<UUID> members) {
+            this.partyId = partyId;
+            this.members = List.copyOf(members);
+            this.joinTime = System.currentTimeMillis();
+        }
+    }
+
+    private static PartyEntry findParty(UUID partyId) {
+        for (PartyEntry entry : partyQueue2v2) {
+            if (entry.partyId.equals(partyId)) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    private static PartyEntry findPartyOf(UUID playerId) {
+        for (PartyEntry entry : partyQueue2v2) {
+            if (entry.members.contains(playerId)) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    private static int[] record(PlayerStats stats, int teamSize) {
+        return stats == null ? new int[3]
+            : new int[] {stats.getWins(teamSize), stats.getLosses(teamSize), stats.getDraws(teamSize)};
+    }
+
+    /** Tells the client which Eden party the player is in, for the matchmaking screen. */
+    public static void sendPartyStatus(ServerPlayer player) {
+        PartyStatusPayload payload = EdenBridge.getParty(player.server, player.getUUID())
+            .map(party -> new PartyStatusPayload(true, party.name(), party.members().size(),
+                party.leader().equals(player.getUUID())))
+            .orElseGet(() -> new PartyStatusPayload(EdenBridge.isAvailable(), "", 0, false));
+        ServerPlayNetworking.send(player, payload);
+    }
+
+    /** Syncs the player's queue flags to the client and tells API listeners. */
     private static void sendQueueState(ServerPlayer player) {
         UUID playerId = player.getUUID();
         ServerPlayNetworking.send(player, new QueueStatePayload(isQueued1v1(playerId), isQueued2v2(playerId)));
+        DuelsApi.fireQueueChanged(playerId);
     }
 
     private static boolean isQueued1v1(UUID playerId) {
@@ -795,9 +958,8 @@ public class MatchmakingManager {
     }
 
     private static boolean isQueued2v2(UUID playerId) {
-        UUID leader = PartyManager.getLeader(playerId);
         return containsEntry(queue2v2, playerId)
-            || (leader != null && containsEntry(partyQueue2v2, leader))
+            || findPartyOf(playerId) != null
             || containsPending(pending2v2, playerId);
     }
 
@@ -810,20 +972,8 @@ public class MatchmakingManager {
         return false;
     }
 
-    private static void sendQueueStateToPartyMembers(UUID playerId, MinecraftServer server) {
-        UUID leader = PartyManager.getLeader(playerId);
-        if (leader == null) {
-            return;
-        }
-        PartyManager.Party party = PartyManager.getPartyByLeader(leader);
-        if (party == null) {
-            ServerPlayer leaderPlayer = server.getPlayerList().getPlayer(leader);
-            if (leaderPlayer != null) {
-                sendQueueState(leaderPlayer);
-            }
-            return;
-        }
-        for (UUID memberId : party.members) {
+    private static void sendQueueStateToMembers(PartyEntry entry, MinecraftServer server) {
+        for (UUID memberId : entry.members) {
             ServerPlayer member = server.getPlayerList().getPlayer(memberId);
             if (member != null) {
                 sendQueueState(member);

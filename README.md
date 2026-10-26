@@ -1,6 +1,6 @@
 # Duels_LD
 
-Fabric (1.21.1) mod that adds matchmade PvP battles in arenas: 1v1/2v2 queues, Elo, parties, currency rewards, leaderboards, and owo-lib GUI screens.
+Fabric (1.21.1) mod that adds matchmade PvP battles in arenas: 1v1/2v2 queues, Elo, 2v2 parties via Eden_LD, currency rewards, leaderboards, and VectorLib GUI screens.
 
 ## Features
 
@@ -30,15 +30,28 @@ Fabric (1.21.1) mod that adds matchmade PvP battles in arenas: 1v1/2v2 queues, E
 7. Points system: offense (damage), defense (blocked), support (healing), and a kill bonus — all weighted in config.
 8. Disconnect grace: a disconnected player has a configurable window to reconnect before forfeiting (the timer pauses meanwhile).
 
-### Parties
-1. Party system for the 2v2 queue.
-2. Leader starts the queue; members are notified.
-3. Invites can be accepted from the GUI or via command.
+### Parties (via Eden_LD)
+1. Parties are Eden_LD's: players form them in Eden's hub (F4). Duels has no party commands of its own.
+2. Only the party leader can queue for 2v2, and the party must have exactly 2 members. Members are notified.
+3. Any change to the party's members drops it from the queue. Parties are not disbanded by a match.
+4. Eden's friendly-fire protection between partymates and guildmates is suspended for match participants (reason `duels_ld:match`) until the match ends.
+5. Without Eden_LD, 2v2 is solo-queue only.
 
-### Elo & Leaderboards
+### Elo, Stats & Leaderboards
 1. Separate Elo for 1v1 and 2v2.
 2. Elo changes announced after each match.
-3. `/duel leaderboard 1v1|2v2` shows the top 10.
+3. Wins/losses/draws per mode (since 1.4.0) plus all-time totals; `/duel stats` shows both with your rank.
+4. `/duel leaderboard 1v1|2v2` shows the top 10. Only players with a match in that mode are ranked — looking at someone's rating no longer adds them.
+5. The last 20 matches per player are kept (mode, result, rating change, teammates, opponents, duration).
+
+### Wager duels (needs Eden_LD + Economy_LD)
+Players stake items and/or coins on a 1v1. The winner takes both stakes, and every other ending
+refunds them. The stakes sit in a crash-safe duel bank, and every number is in
+`config/duels_ld/wager.json`. See [CHANGELOG.md](CHANGELOG.md) 1.6.0 and
+[docs/PLAN-wager-duels.md](docs/PLAN-wager-duels.md).
+
+### API
+`net.ledok.duels_ld.api.DuelsApi` exposes stats, leaderboards/rank, match history, queue join/leave/state and match/queue events for other mods (Eden_LD's hub Duels tab uses it). See [API.md](API.md).
 
 ### Rewards (optional, via Economy_LD)
 1. Currency paid out for win/loss/draw outcomes.
@@ -49,20 +62,19 @@ Fabric (1.21.1) mod that adds matchmade PvP battles in arenas: 1v1/2v2 queues, E
 6. If Economy_LD is not installed, rewards are silently disabled.
 
 ### GUI
-1. Lobby/matchmaking screen (`B` keybind) — shows Elo, queue timers, party invite/accept, and coins earned today.
+1. Lobby/matchmaking screen (`B` keybind) — shows Elo and W/L/D per mode, queue timers, your Eden party, and coins earned today.
 2. Admin GUI for matchmaking settings (`/duel admingui`) — durations, win-HP, scoring weights, and the out-of-bounds penalty.
 3. Arena manager screen (`/duel arena gui`).
 
 ## Commands
 
-1. `/duel stats` — show your win/loss/draw stats.
+1. `/duel stats` — your rating, rank and wins/losses/draws per mode, plus all-time totals.
 2. `/duel leaderboard 1v1|2v2` — show the Elo top 10.
 3. `/duel queue 1v1|2v2` — join a matchmaking queue.
 4. `/duel leavequeue` — leave all queues.
 5. `/duel admingui` — open the matchmaking admin GUI. *(op)*
 6. `/duel reload` — reload the config from disk. *(op)*
-7. `/duel party create|invite <player>|accept <leader>|leave|disband` — party commands.
-8. `/duel arena ...` — arena management *(op)*, see below.
+7. `/duel arena ...` — arena management *(op)*, see below.
 
 ## Arena Commands *(op)*
 
@@ -115,9 +127,10 @@ All placeholders use namespace `duels_ld`.
 
 ## Dependencies
 
-1. **owo-lib** — required (GUI screens).
+1. **VectorLib** — required for the GUI screens; bundled inside the jar (jar-in-jar), nothing to install.
 2. **Economy_LD** — optional; enables currency rewards.
-3. **Placeholder API** — optional; enables the placeholders above (HoloDisplays suggested for holograms).
+3. **Eden_LD** — optional; provides parties for the 2v2 queue. Without it, 2v2 is solo-queue only.
+4. **Placeholder API** — optional; enables the placeholders above (HoloDisplays suggested for holograms).
 
 ## Notes
 

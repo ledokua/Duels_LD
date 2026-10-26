@@ -25,11 +25,12 @@
     "fabric-api": "*",
     "minecraft": "${minecraft_version}",
     "busylib": "*",
-    "owo": ">=0.12.15"
+    "vectorlib": ">=0.7.2"
   },
   "suggests": {
     "holodisplays": "*",
     "placeholder-api": "*",
-    "economy_ld": "*"
+    "economy_ld": "*",
+    "eden_ld": "*"
   }
 }

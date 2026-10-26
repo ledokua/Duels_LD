@@ -13,23 +13,23 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(Player.class)
 public abstract class PlayerDropMixin {
-    @Inject(
-        method = "drop(Lnet/minecraft/world/item/ItemStack;Z)Lnet/minecraft/world/entity/item/ItemEntity;",
-        at = @At("HEAD"),
-        cancellable = true
-    )
-    private void duelsld$blockDropShort(ItemStack stack, boolean throwRandomly, CallbackInfoReturnable<ItemEntity> cir) {
-        if (shouldBlockDrop() && keepInInventory(stack)) {
-            cir.setReturnValue(null);
-        }
-    }
-
+    /**
+     * The two-arg {@code drop(ItemStack, boolean)} delegates here with {@code throwRandomly =
+     * false}, so this single injector covers every drop path. Player-initiated throws always set
+     * a flag: the Q key passes {@code retainOwnership = true}, GUI throws and drag-outside pass
+     * {@code retainOwnership = true} via the two-arg overload. Drops with both flags false are
+     * command-driven — notably /give's cosmetic pickup item after the stack was already added to
+     * the inventory — and must pass through, or blocking them duplicates the item.
+     */
     @Inject(
         method = "drop(Lnet/minecraft/world/item/ItemStack;ZZ)Lnet/minecraft/world/entity/item/ItemEntity;",
         at = @At("HEAD"),
         cancellable = true
     )
     private void duelsld$blockDrop(ItemStack stack, boolean throwRandomly, boolean retainOwnership, CallbackInfoReturnable<ItemEntity> cir) {
+        if (!throwRandomly && !retainOwnership) {
+            return;
+        }
         if (shouldBlockDrop() && keepInInventory(stack)) {
             cir.setReturnValue(null);
         }

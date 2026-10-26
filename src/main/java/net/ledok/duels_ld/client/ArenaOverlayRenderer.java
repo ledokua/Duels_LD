@@ -43,6 +43,11 @@ public final class ArenaOverlayRenderer {
         snapshot = payload;
     }
 
+    /** Cleared on disconnect so a previous server's boxes never render in the next world. */
+    public static void clearSnapshot() {
+        snapshot = null;
+    }
+
     private static void render(WorldRenderContext context) {
         ArenaOverlayPayload snap = snapshot;
         Minecraft mc = Minecraft.getInstance();

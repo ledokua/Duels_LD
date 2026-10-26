@@ -11,21 +11,17 @@ import net.ledok.duels_ld.manager.DuelManager;
 import net.ledok.duels_ld.manager.MatchmakingConfigManager;
 import net.ledok.duels_ld.manager.MatchmakingManager;
 import net.ledok.duels_ld.manager.MMRManager;
-import net.ledok.duels_ld.manager.PartyManager;
 import net.ledok.duels_ld.manager.StatsManager;
 import net.ledok.duels_ld.network.JoinQueuePayload;
 import net.ledok.duels_ld.network.LeaveQueuePayload;
 import net.ledok.duels_ld.network.OpenAdminGuiPayload;
 import net.ledok.duels_ld.network.OpenLobbyRequestPayload;
 import net.ledok.duels_ld.network.OpenLobbyScreenPayload;
-import net.ledok.duels_ld.network.PartyAcceptPayload;
-import net.ledok.duels_ld.network.PartyDeclinePayload;
-import net.ledok.duels_ld.network.PartyInvitePayload;
+import net.ledok.duels_ld.network.PartyStatusPayload;
 import net.ledok.duels_ld.network.QueueStatePayload;
 import net.ledok.duels_ld.network.RequestEloPayload;
 import net.ledok.duels_ld.network.SyncEloPayload;
 import net.ledok.duels_ld.network.SyncMatchmakingSettingsPayload;
-import net.ledok.duels_ld.network.SyncPartyPayload;
 import net.ledok.duels_ld.network.UpdateMatchmakingSettingsPayload;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,21 +45,21 @@ public class DuelsLdMod implements ModInitializer {
                 LOGGER.error("Failed to create SavedData directory.", e);
             }
         });
+        // Cached leaderboards belong to the previous world in single-player.
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(server ->
+            net.ledok.duels_ld.api.DuelsApi.invalidateLeaderboards());
 
         PayloadTypeRegistry.playC2S().register(JoinQueuePayload.TYPE, JoinQueuePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(LeaveQueuePayload.TYPE, LeaveQueuePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(UpdateMatchmakingSettingsPayload.TYPE, UpdateMatchmakingSettingsPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(RequestEloPayload.TYPE, RequestEloPayload.CODEC);
-        PayloadTypeRegistry.playC2S().register(PartyInvitePayload.TYPE, PartyInvitePayload.CODEC);
-        PayloadTypeRegistry.playC2S().register(PartyAcceptPayload.TYPE, PartyAcceptPayload.CODEC);
-        PayloadTypeRegistry.playC2S().register(PartyDeclinePayload.TYPE, PartyDeclinePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(OpenLobbyRequestPayload.TYPE, OpenLobbyRequestPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(OpenAdminGuiPayload.TYPE, OpenAdminGuiPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(SyncMatchmakingSettingsPayload.TYPE, SyncMatchmakingSettingsPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(SyncEloPayload.TYPE, SyncEloPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(OpenLobbyScreenPayload.TYPE, OpenLobbyScreenPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(QueueStatePayload.TYPE, QueueStatePayload.CODEC);
-        PayloadTypeRegistry.playS2C().register(SyncPartyPayload.TYPE, SyncPartyPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(PartyStatusPayload.TYPE, PartyStatusPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(net.ledok.duels_ld.network.ArenaOverlayPayload.TYPE, net.ledok.duels_ld.network.ArenaOverlayPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(net.ledok.duels_ld.network.ArenaListPayload.TYPE, net.ledok.duels_ld.network.ArenaListPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(net.ledok.duels_ld.network.ArenaActionPayload.TYPE, net.ledok.duels_ld.network.ArenaActionPayload.CODEC);
@@ -74,10 +70,13 @@ public class DuelsLdMod implements ModInitializer {
         MatchmakingConfigManager.init();
         ArenaManager.init();
         MMRManager.init();
-        PartyManager.init();
 
         DuelManager.init();
         MatchmakingManager.init();
+        net.ledok.duels_ld.wager.WagerManager.init();
+        net.ledok.duels_ld.wager.WagerStakeMenu.register();
+        net.ledok.duels_ld.wager.WagerScreens.registerPayloads();
+        net.ledok.duels_ld.wager.WagerScreens.registerReceivers();
         net.ledok.duels_ld.manager.ArenaWand.register();
         net.ledok.duels_ld.manager.ArenaGuiHandler.register();
         if (FabricLoader.getInstance().isModLoaded("placeholder-api")) {
@@ -88,6 +87,7 @@ public class DuelsLdMod implements ModInitializer {
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             DuelCommand.register(dispatcher);
+            net.ledok.duels_ld.command.WagerCommand.register(dispatcher);
         });
     }
 }

@@ -107,6 +107,16 @@ public class ArenaManager {
         return !removed; // true = added, false = removed
     }
 
+    /** True when at least one arena (busy or not) has enough spawns for that team size. */
+    public static boolean hasArenaFor(int teamSize) {
+        for (Arena arena : arenas.values()) {
+            if (isReadyFor(arena, teamSize)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static List<Arena> listArenas() {
         List<Arena> list = new ArrayList<>(arenas.values());
         list.sort((a, b) -> a.name.compareToIgnoreCase(b.name));

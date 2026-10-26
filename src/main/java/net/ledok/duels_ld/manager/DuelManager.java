@@ -8,6 +8,10 @@ import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.ledok.duels_ld.DuelsLdMod;
+import net.ledok.duels_ld.api.DuelsApi;
+import net.ledok.duels_ld.integration.EdenBridge;
+import net.ledok.duels_ld.wager.WagerConfig;
+import net.ledok.duels_ld.wager.WagerManager;
 import net.minecraft.ChatFormatting;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.network.chat.Component;
@@ -312,6 +316,9 @@ public class DuelManager {
     private static void startDuel(ServerPlayer player1, ServerPlayer player2, DuelSettings settings) {
         ActivityManager.setPlayerBusy(player1.getUUID());
         ActivityManager.setPlayerBusy(player2.getUUID());
+        // Eden partymates/guildmates can't hurt each other; a match lifts that until it ends.
+        EdenBridge.suspendProtection(player1);
+        EdenBridge.suspendProtection(player2);
         recentlyEnded.remove(player1.getUUID());
         recentlyEnded.remove(player2.getUUID());
         
@@ -356,6 +363,7 @@ public class DuelManager {
         int countdown = duel.getInitialCountdownSeconds();
         player1.sendSystemMessage(Component.translatable("duels_ld.duel.starting_soon", countdown));
         player2.sendSystemMessage(Component.translatable("duels_ld.duel.starting_soon", countdown));
+        DuelsApi.fireMatchStart(DuelsApi.Mode.ONE_V_ONE, List.of(player1.getUUID(), player2.getUUID()));
     }
 
     public static void startMatchmakingDuel(ServerPlayer player1, ServerPlayer player2, DuelSettings settings, ArenaManager.Arena arena, ArenaManager.SpawnPoint spawn1, ArenaManager.SpawnPoint spawn2) {
@@ -393,6 +401,46 @@ public class DuelManager {
         }
     }
 
+    /**
+     * Starts a wager fight: a matchmade-style 1v1 in an arena (teleport back, arena bounds) that
+     * settles wager duel {@code number} — no ratings, ranked stats or battle rewards, and running
+     * out of time is a draw.
+     */
+    public static void startWagerDuel(ServerPlayer author, ServerPlayer challenger, int number, int durationSeconds,
+                                      ArenaManager.Arena arena, ArenaManager.SpawnPoint spawn1, ArenaManager.SpawnPoint spawn2) {
+        DuelSettings settings = new DuelSettings();
+        settings.setDurationSeconds(durationSeconds);
+        settings.setWinHpPercentage(0);
+        startMatchmakingDuel(author, challenger, settings, arena, spawn1, spawn2);
+        ActiveDuel duel = getDuel(author);
+        if (duel != null) {
+            duel.setWagerNumber(number);
+        }
+    }
+
+    /** Ends the running fight of wager duel {@code number} as a draw (staff cancel, a ban). */
+    public static void endWagerAsDraw(int number) {
+        for (ActiveDuel duel : new HashSet<>(activeDuels.values())) {
+            if (duel.getWagerNumber() == number) {
+                MinecraftServer server = ArenaManager.getServer();
+                if (server != null) {
+                    endDuel(server, duel, true, null);
+                }
+                return;
+            }
+        }
+    }
+
+    /** {@code /duel surrender}: gives a wager fight to the opponent. False when not in one. */
+    public static boolean surrender(ServerPlayer player) {
+        ActiveDuel duel = getDuel(player);
+        if (duel == null || !duel.isWager() || duel.isCountdown()) {
+            return false;
+        }
+        endDuel(player.server, duel, false, getOpponentUUID(duel, player.getUUID()));
+        return true;
+    }
+
     public static void startMatchmakingDuel2v2(MinecraftServer server, ServerPlayer p1, ServerPlayer p2, ServerPlayer p3, ServerPlayer p4,
                                                 DuelSettings settings, ArenaManager.Arena arena,
                                                 ArenaManager.SpawnPoint t1a, ArenaManager.SpawnPoint t1b, ArenaManager.SpawnPoint t2a, ArenaManager.SpawnPoint t2b) {
@@ -416,6 +464,9 @@ public class DuelManager {
         ActivityManager.setPlayerBusy(p2.getUUID());
         ActivityManager.setPlayerBusy(p3.getUUID());
         ActivityManager.setPlayerBusy(p4.getUUID());
+        for (ServerPlayer p : List.of(p1, p2, p3, p4)) {
+            EdenBridge.suspendProtection(p);
+        }
         for (UUID id : List.of(p1.getUUID(), p2.getUUID(), p3.getUUID(), p4.getUUID())) {
             recentlyEnded.remove(id);
         }
@@ -497,15 +548,7 @@ public class DuelManager {
             storeTeamSpawn(duel, p4.getUUID(), t2b);
             duel.setMatchmaking(true);
         }
-
-        Set<UUID> processedPartyLeaders = new HashSet<>();
-        for (ServerPlayer player : List.of(p1, p2, p3, p4)) {
-            UUID leaderId = PartyManager.getLeader(player.getUUID());
-            if (leaderId == null || !processedPartyLeaders.add(leaderId)) {
-                continue;
-            }
-            PartyManager.disbandParty(leaderId, server);
-        }
+        DuelsApi.fireMatchStart(DuelsApi.Mode.TWO_V_TWO, duel.allPlayers());
     }
     
     /**
@@ -515,8 +558,11 @@ public class DuelManager {
      */
     private static void onServerStopping(MinecraftServer server) {
         for (ActiveDuel duel : new HashSet<>(activeDuels.values())) {
-            restorePlayer(server.getPlayerList().getPlayer(duel.getPlayer1()), duel.isMatchmaking());
-            restorePlayer(server.getPlayerList().getPlayer(duel.getPlayer2()), duel.isMatchmaking());
+            for (UUID id : List.of(duel.getPlayer1(), duel.getPlayer2())) {
+                ServerPlayer player = server.getPlayerList().getPlayer(id);
+                restorePlayer(player, duel.isMatchmaking());
+                EdenBridge.resumeProtection(player);
+            }
             duel.getBossBar().removeAllPlayers();
             if (duel.getArenaName() != null) {
                 ArenaManager.markInactive(duel.getArenaName());
@@ -526,7 +572,9 @@ public class DuelManager {
 
         for (ActiveTeamDuel duel : new HashSet<>(activeTeamDuels.values())) {
             for (UUID id : duel.allPlayers()) {
-                restorePlayer(server.getPlayerList().getPlayer(id), duel.isMatchmaking());
+                ServerPlayer player = server.getPlayerList().getPlayer(id);
+                restorePlayer(player, duel.isMatchmaking());
+                EdenBridge.resumeProtection(player);
             }
             duel.getBossBar().removeAllPlayers();
             if (duel.getArenaName() != null) {
@@ -613,6 +661,11 @@ public class DuelManager {
                 long elapsed = (currentTime - duel.getStartTime() - duel.getPausedMs()) / 1000;
                 long remaining = duel.getSettings().getDurationSeconds() - elapsed;
 
+                if (remaining <= 0 && duel.isWager()) {
+                    // Wager fights aren't decided on points: time running out is a draw.
+                    endDuel(server, duel, true, null);
+                    continue;
+                }
                 if (remaining <= 0) {
                     UUID winnerByPoints = pickWinnerByPoints(duel);
                     if (winnerByPoints == null) {
@@ -664,6 +717,7 @@ public class DuelManager {
     }
 
     private static void endDuel(MinecraftServer server, ActiveDuel duel, boolean draw, UUID winnerUUID) {
+        Map<UUID, Integer> ratingsBefore = ratings(DuelsApi.Mode.ONE_V_ONE, List.of(duel.getPlayer1(), duel.getPlayer2()));
         Scoreboard scoreboard = server.getScoreboard();
         PlayerTeam team1 = scoreboard.getPlayerTeam(duel.getTeamName() + "_1");
         PlayerTeam team2 = scoreboard.getPlayerTeam(duel.getTeamName() + "_2");
@@ -683,6 +737,9 @@ public class DuelManager {
 
         ServerPlayer player1 = server.getPlayerList().getPlayer(duel.getPlayer1());
         ServerPlayer player2 = server.getPlayerList().getPlayer(duel.getPlayer2());
+        // Offline players need nothing: Eden drops suspensions on disconnect.
+        EdenBridge.resumeProtection(player1);
+        EdenBridge.resumeProtection(player2);
 
         restorePlayer(player1, duel.isMatchmaking());
         restorePlayer(player2, duel.isMatchmaking());
@@ -690,21 +747,34 @@ public class DuelManager {
         recordMatchEnd(player1, duel.getArenaName());
         recordMatchEnd(player2, duel.getArenaName());
 
+        if (duel.isWager()) {
+            // Settled by the duel bank: no ratings, ranked stats, ranked history or battle rewards.
+            if (duel.getArenaName() != null) {
+                ArenaManager.markInactive(duel.getArenaName());
+            }
+            UUID winner = draw ? null : winnerUUID;
+            UUID first = winner != null ? winner : duel.getPlayer1();
+            UUID second = first.equals(duel.getPlayer1()) ? duel.getPlayer2() : duel.getPlayer1();
+            DuelsApi.fireMatchEnd(DuelsApi.Mode.ONE_V_ONE, List.of(first), List.of(second), winner == null);
+            WagerManager.onFightEnd(duel.getWagerNumber(), winner, duel.getStartTime() > 0 ? duel.getStartTime() : System.currentTimeMillis());
+            return;
+        }
+
         if (draw) {
+            StatsManager.recordDraw(duel.getPlayer1(), 1);
+            StatsManager.recordDraw(duel.getPlayer2(), 1);
             if (player1 != null) {
                 player1.sendSystemMessage(Component.translatable("duels_ld.duel.draw"));
-                StatsManager.recordDraw(player1.getUUID());
             }
             if (player2 != null) {
                 player2.sendSystemMessage(Component.translatable("duels_ld.duel.draw"));
-                StatsManager.recordDraw(player2.getUUID());
             }
             BattleRewards.awardDuel(server, duel, true, null, null, 0, 0);
         } else if (winnerUUID != null) {
             UUID loserUUID = duel.getPlayer1().equals(winnerUUID) ? duel.getPlayer2() : duel.getPlayer1();
 
-            StatsManager.recordWin(winnerUUID);
-            StatsManager.recordLoss(loserUUID);
+            StatsManager.recordWin(winnerUUID, 1);
+            StatsManager.recordLoss(loserUUID, 1);
 
             MatchmakingConfigManager.PointWeights weights = MatchmakingConfigManager.getConfig().weights;
             duel.getPoints(winnerUUID).addOffense(weights.killBonus);
@@ -732,9 +802,16 @@ public class DuelManager {
         if (duel.getArenaName() != null) {
             ArenaManager.markInactive(duel.getArenaName());
         }
+
+        if (draw || winnerUUID != null) {
+            List<UUID> side1 = List.of(draw ? duel.getPlayer1() : winnerUUID);
+            List<UUID> side2 = List.of(duel.getPlayer1().equals(side1.get(0)) ? duel.getPlayer2() : duel.getPlayer1());
+            finishMatch(server, duel, DuelsApi.Mode.ONE_V_ONE, side1, side2, draw, ratingsBefore);
+        }
     }
 
     private static void endTeamDuel(MinecraftServer server, ActiveTeamDuel duel, boolean draw, int winningTeam) {
+        Map<UUID, Integer> ratingsBefore = ratings(DuelsApi.Mode.TWO_V_TWO, duel.allPlayers());
         Scoreboard scoreboard = server.getScoreboard();
         PlayerTeam team1 = scoreboard.getPlayerTeam(duel.getTeamNameBase() + "_1");
         PlayerTeam team2 = scoreboard.getPlayerTeam(duel.getTeamNameBase() + "_2");
@@ -750,6 +827,8 @@ public class DuelManager {
             activeTeamDuels.remove(id);
             lastBoundsTeleport.remove(id);
             ActivityManager.setPlayerFree(id);
+            // Offline players need nothing: Eden drops suspensions on disconnect.
+            EdenBridge.resumeProtection(server.getPlayerList().getPlayer(id));
         }
 
         duel.getBossBar().removeAllPlayers();
@@ -763,7 +842,7 @@ public class DuelManager {
 
         if (draw) {
             for (UUID id : allPlayers) {
-                StatsManager.recordDraw(id);
+                StatsManager.recordDraw(id, 2);
                 ServerPlayer player = server.getPlayerList().getPlayer(id);
                 if (player != null) {
                     player.sendSystemMessage(Component.translatable("duels_ld.duel.draw"));
@@ -774,10 +853,10 @@ public class DuelManager {
             List<UUID> winners = winningTeam == 1 ? duel.getTeam1() : duel.getTeam2();
             List<UUID> losers = winningTeam == 1 ? duel.getTeam2() : duel.getTeam1();
             for (UUID id : winners) {
-                StatsManager.recordWin(id);
+                StatsManager.recordWin(id, 2);
             }
             for (UUID id : losers) {
-                StatsManager.recordLoss(id);
+                StatsManager.recordLoss(id, 2);
             }
             if (duel.isMatchmaking() && winners.size() >= 2 && losers.size() >= 2) {
                 MMRManager.EloDelta2v2 delta = MMRManager.applyResult2v2WithDelta(
@@ -815,6 +894,62 @@ public class DuelManager {
         if (duel.getArenaName() != null) {
             ArenaManager.markInactive(duel.getArenaName());
         }
+
+        boolean team1Won = draw || winningTeam == 1;
+        finishMatch(server, duel, DuelsApi.Mode.TWO_V_TWO,
+            team1Won ? duel.getTeam1() : duel.getTeam2(),
+            team1Won ? duel.getTeam2() : duel.getTeam1(),
+            draw, ratingsBefore);
+    }
+
+    private static Map<UUID, Integer> ratings(DuelsApi.Mode mode, List<UUID> players) {
+        Map<UUID, Integer> out = new HashMap<>();
+        for (UUID id : players) {
+            out.put(id, mode == DuelsApi.Mode.ONE_V_ONE ? MMRManager.getRating1v1(id) : MMRManager.getRating2v2(id));
+        }
+        return out;
+    }
+
+    /**
+     * Writes everyone's match history and tells API listeners. {@code winners}/{@code losers} hold
+     * team 1 and team 2 on a draw.
+     */
+    private static void finishMatch(MinecraftServer server, ActiveMatch match, DuelsApi.Mode mode,
+                                    List<UUID> winners, List<UUID> losers, boolean draw,
+                                    Map<UUID, Integer> ratingsBefore) {
+        long now = System.currentTimeMillis();
+        long duration = match.isCountdown() || match.getStartTime() <= 0
+            ? 0L : Math.max(0L, now - match.getStartTime() - match.getPausedMs());
+        List<String> winnerNames = names(server, winners);
+        List<String> loserNames = names(server, losers);
+        Map<UUID, Integer> ratingsAfter = ratings(mode, new ArrayList<>(ratingsBefore.keySet()));
+        MatchHistoryStore history = MatchHistoryStore.get(server);
+        for (int side = 0; side < 2; side++) {
+            List<UUID> team = side == 0 ? winners : losers;
+            List<String> teamNames = side == 0 ? winnerNames : loserNames;
+            List<String> opponents = side == 0 ? loserNames : winnerNames;
+            DuelsApi.Result result = draw ? DuelsApi.Result.DRAW : side == 0 ? DuelsApi.Result.WIN : DuelsApi.Result.LOSS;
+            for (int i = 0; i < team.size(); i++) {
+                UUID id = team.get(i);
+                List<String> mates = new ArrayList<>(teamNames);
+                mates.remove(i);
+                history.add(id, new DuelsApi.MatchRecord(now, mode, result,
+                    ratingsBefore.getOrDefault(id, MMRManager.startingRating()),
+                    ratingsAfter.getOrDefault(id, MMRManager.startingRating()),
+                    List.copyOf(mates), opponents, duration));
+            }
+        }
+        DuelsApi.fireMatchEnd(mode, winners, losers, draw);
+    }
+
+    private static List<String> names(MinecraftServer server, List<UUID> ids) {
+        List<String> out = new ArrayList<>(ids.size());
+        for (UUID id : ids) {
+            ServerPlayer online = server.getPlayerList().getPlayer(id);
+            out.add(online != null ? online.getGameProfile().getName()
+                : server.getProfileCache().get(id).map(profile -> profile.getName()).orElse(id.toString().substring(0, 8)));
+        }
+        return List.copyOf(out);
     }
     
     /** True once the player's reconnect window has elapsed. Starts the window if not yet tracked. */
@@ -895,7 +1030,8 @@ public class DuelManager {
             duel.markDisconnected(id, now);
             return false;
         }
-        return now - since >= reconnectGraceMs();
+        long grace = duel.isWager() ? Math.max(0, WagerConfig.get().fightReconnectSeconds) * 1000L : reconnectGraceMs();
+        return now - since >= grace;
     }
 
     private static boolean graceExpired(ActiveTeamDuel duel, UUID id, long now) {
@@ -943,6 +1079,8 @@ public class DuelManager {
 
         ActiveDuel duel = activeDuels.get(id);
         if (duel != null) {
+            // Eden cleared the suspension when the player disconnected.
+            EdenBridge.suspendProtection(player);
             duel.clearDisconnected(id);
             resumeIntoArena(player, duel.getSpawnPosition(id), duel.getFreezePosition(id), duel.getSpawnYaw(id), duel.getSpawnPitch(id), duel.getBossBar(), duel.isCountdown());
             notifyOthers(server, List.of(duel.getPlayer1(), duel.getPlayer2()), id,
@@ -952,6 +1090,8 @@ public class DuelManager {
 
         ActiveTeamDuel teamDuel = activeTeamDuels.get(id);
         if (teamDuel != null) {
+            // Eden cleared the suspension on disconnect; eliminated spectators keep it until the end too.
+            EdenBridge.suspendProtection(player);
             if (teamDuel.isEliminated(id)) {
                 player.setGameMode(GameType.SPECTATOR);
             } else {

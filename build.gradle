@@ -1,5 +1,5 @@
 plugins {
-    id 'fabric-loom' version '1.16-SNAPSHOT'
+    id 'fabric-loom' version '1.18-SNAPSHOT'
     id 'maven-publish'
 }
 
@@ -27,7 +27,9 @@ repositories {
         url "https://maven.nucleoid.xyz/"
         name "Nucleoid"
     }
-    maven { url "https://maven.wispforest.io/releases/" }
+    // Gives libs/*.jar module coordinates (":VectorLib-fabric:<version>") so Loom's `include`
+    // (jar-in-jar) accepts them; plain `include files(...)` is rejected.
+    flatDir { dirs 'libs' }
 }
 
 dependencies {
@@ -38,7 +40,10 @@ dependencies {
 
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
     modImplementation "eu.pb4:placeholder-api:${project.placeholder_api_version}"
-    modImplementation "io.wispforest:owo-lib:${project.owo_version}"
+    // VectorLib (canvas UI for the screens). Bundled jar-in-jar so the production jar works
+    // standalone; the loader keeps the highest version among the mods that bundle it.
+    modImplementation files("libs/VectorLib-fabric-${project.vectorlib_version}.jar")
+    include ":VectorLib-fabric:${project.vectorlib_version}"
     modImplementation fileTree(
             dir: "${project.projectDir}/libs",
             include: ["BusyLib-*.jar"],
@@ -52,6 +57,19 @@ dependencies {
     modRuntimeOnly fileTree(
             dir: "${project.projectDir}/libs",
             include: ["Economy_LD-*.jar"],
+            exclude: ["*sources.jar"]
+    )
+    // Eden_LD (optional): parties and friendly-fire protection. Compiled against, never bundled;
+    // reached only through integration/EdenBridge. Eden's own jar-in-jar VectorLib isn't unpacked
+    // from a local fileTree, but the VectorLib above covers it in dev runs.
+    modCompileOnly fileTree(
+            dir: "${project.projectDir}/libs",
+            include: ["Eden_LD-*.jar"],
+            exclude: ["*sources.jar"]
+    )
+    modRuntimeOnly fileTree(
+            dir: "${project.projectDir}/libs",
+            include: ["Eden_LD-*.jar"],
             exclude: ["*sources.jar"]
     )
     // Economy_LD bundles its JDBC driver as a jar-in-jar, but Loom does not unpack nested jars

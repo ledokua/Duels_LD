@@ -26,6 +26,8 @@ public abstract class ActiveMatch {
     private int countdownTicks = 0;
     private String arenaName;
     private boolean matchmaking;
+    /** The wager duel number this fight settles, or 0 for a ranked/plain duel. */
+    private int wagerNumber;
     private long pausedMs = 0L;
     private long lastTickMs = 0L;
 
@@ -71,6 +73,9 @@ public abstract class ActiveMatch {
     public void setArenaName(String arenaName) { this.arenaName = arenaName; }
     public boolean isMatchmaking() { return matchmaking; }
     public void setMatchmaking(boolean matchmaking) { this.matchmaking = matchmaking; }
+    public int getWagerNumber() { return wagerNumber; }
+    public void setWagerNumber(int wagerNumber) { this.wagerNumber = wagerNumber; }
+    public boolean isWager() { return wagerNumber > 0; }
 
     public long getPausedMs() { return pausedMs; }
     public void addPausedMs(long delta) { pausedMs += delta; }

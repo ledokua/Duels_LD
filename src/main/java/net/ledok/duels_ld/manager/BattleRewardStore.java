@@ -57,8 +57,12 @@ public class BattleRewardStore extends SavedData {
 
     /** Total coins earned today across all outcomes (for the screen display). */
     public long totalEarned(UUID uuid, long today) {
-        long[] earned = current(uuid, today).earned;
-        return earned[0] + earned[1] + earned[2];
+        // Read-only: no entry is created (or reset) just by looking.
+        Entry e = entries.get(uuid);
+        if (e == null || e.dayKey != today) {
+            return 0L;
+        }
+        return e.earned[0] + e.earned[1] + e.earned[2];
     }
 
     /** Highest prior match count this player has against any of the given opponents today. */

@@ -7,6 +7,7 @@ import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
+import net.ledok.duels_ld.api.DuelsApi;
 import net.ledok.duels_ld.manager.*;
 import net.ledok.duels_ld.network.OpenAdminGuiPayload;
 import net.ledok.duels_ld.network.SyncMatchmakingSettingsPayload;
@@ -14,7 +15,6 @@ import net.ledok.duels_ld.manager.ArenaWand;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -53,19 +53,6 @@ public class DuelCommand {
             .then(Commands.literal("reload")
                 .requires(source -> source.hasPermission(2))
                 .executes(DuelCommand::reloadConfig))
-            .then(Commands.literal("party")
-                .then(Commands.literal("create")
-                    .executes(DuelCommand::partyCreate))
-                .then(Commands.literal("invite")
-                    .then(Commands.argument("target", EntityArgument.player())
-                        .executes(DuelCommand::partyInvite)))
-                .then(Commands.literal("accept")
-                    .then(Commands.argument("leader", EntityArgument.player())
-                        .executes(DuelCommand::partyAccept)))
-                .then(Commands.literal("leave")
-                    .executes(DuelCommand::partyLeave))
-                .then(Commands.literal("disband")
-                    .executes(DuelCommand::partyDisband)))
             .then(Commands.literal("arena")
                 .requires(source -> source.hasPermission(2))
                 .then(Commands.literal("create")
@@ -114,13 +101,26 @@ public class DuelCommand {
 
     private static int stats(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         ServerPlayer player = context.getSource().getPlayerOrException();
-        PlayerStats stats = StatsManager.getStats(player.getUUID());
-        
         player.sendSystemMessage(Component.translatable("duels_ld.command.stats.header"));
-        player.sendSystemMessage(Component.translatable("duels_ld.command.stats.wins", stats.getWins()));
-        player.sendSystemMessage(Component.translatable("duels_ld.command.stats.losses", stats.getLosses()));
-        player.sendSystemMessage(Component.translatable("duels_ld.command.stats.draws", stats.getDraws()));
-        
+        Optional<DuelsApi.Stats> stats = DuelsApi.stats(player.server, player.getUUID());
+        if (stats.isEmpty()) {
+            player.sendSystemMessage(Component.translatable("duels_ld.command.stats.none"));
+            return 1;
+        }
+        for (DuelsApi.Mode mode : DuelsApi.Mode.values()) {
+            DuelsApi.ModeStats m = stats.get().of(mode);
+            int rank = DuelsApi.rank(player.server, mode, player.getUUID());
+            Component rankText = rank > 0
+                ? Component.translatable("duels_ld.command.stats.rank", rank)
+                : Component.translatable("duels_ld.command.stats.unranked");
+            player.sendSystemMessage(Component.translatable("duels_ld.command.stats.mode",
+                mode == DuelsApi.Mode.ONE_V_ONE ? "1v1" : "2v2", m.rating(), rankText, m.wins(), m.losses(), m.draws()));
+        }
+        PlayerStats totals = StatsManager.find(player.getUUID());
+        if (totals != null) {
+            player.sendSystemMessage(Component.translatable("duels_ld.command.stats.total",
+                totals.getWins(), totals.getLosses(), totals.getDraws()));
+        }
         return 1;
     }
 
@@ -133,28 +133,18 @@ public class DuelCommand {
             return 0;
         }
 
-        Map<UUID, Integer> ratings = is1v1 ? MMRManager.getAll1v1Ratings() : MMRManager.getAll2v2Ratings();
-        if (ratings.isEmpty()) {
+        List<DuelsApi.LeaderboardEntry> top = DuelsApi.leaderboard(context.getSource().getServer(),
+            is1v1 ? DuelsApi.Mode.ONE_V_ONE : DuelsApi.Mode.TWO_V_TWO, 10);
+        if (top.isEmpty()) {
             context.getSource().sendSuccess(() -> Component.translatable("duels_ld.command.leaderboard.none", mode), false);
             return 1;
         }
 
-        List<Map.Entry<UUID, Integer>> sorted = new ArrayList<>(ratings.entrySet());
-        sorted.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
-
         context.getSource().sendSuccess(() -> Component.translatable("duels_ld.command.leaderboard.header", mode.toUpperCase()), false);
-        int count = Math.min(10, sorted.size());
-        for (int i = 0; i < count; i++) {
-            Map.Entry<UUID, Integer> entry = sorted.get(i);
-            String name = Component.translatable("duels_ld.command.player_unknown").getString();
-            var profile = context.getSource().getServer().getProfileCache().get(entry.getKey());
-            if (profile.isPresent()) {
-                name = profile.get().getName();
-            }
+        for (int i = 0; i < top.size(); i++) {
+            DuelsApi.LeaderboardEntry entry = top.get(i);
             final int rank = i + 1;
-            final String playerName = name;
-            final int rating = entry.getValue();
-            context.getSource().sendSuccess(() -> Component.translatable("duels_ld.command.leaderboard.entry", rank, playerName, rating), false);
+            context.getSource().sendSuccess(() -> Component.translatable("duels_ld.command.leaderboard.entry", rank, entry.name(), entry.rating()), false);
         }
         return 1;
     }
@@ -203,48 +193,13 @@ public class DuelCommand {
 
     private static int reloadConfig(CommandContext<CommandSourceStack> context) {
         boolean ok = MatchmakingConfigManager.reload();
+        net.ledok.duels_ld.wager.WagerConfig.load();
         if (ok) {
             context.getSource().sendSuccess(() -> Component.translatable("duels_ld.command.config_reloaded").withStyle(ChatFormatting.GREEN), true);
         } else {
             context.getSource().sendFailure(Component.translatable("duels_ld.command.config_reload_failed"));
         }
         return ok ? 1 : 0;
-    }
-
-    private static int partyCreate(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
-        ServerPlayer player = context.getSource().getPlayerOrException();
-        PartyManager.createParty(player);
-        return 1;
-    }
-
-    private static int partyInvite(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
-        ServerPlayer leader = context.getSource().getPlayerOrException();
-        ServerPlayer target = EntityArgument.getPlayer(context, "target");
-        PartyManager.invite(leader, target);
-        return 1;
-    }
-
-    private static int partyAccept(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
-        ServerPlayer target = context.getSource().getPlayerOrException();
-        ServerPlayer leader = EntityArgument.getPlayer(context, "leader");
-        PartyManager.acceptInvite(target, leader);
-        return 1;
-    }
-
-    private static int partyLeave(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
-        ServerPlayer player = context.getSource().getPlayerOrException();
-        PartyManager.leaveParty(player);
-        return 1;
-    }
-
-    private static int partyDisband(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
-        ServerPlayer leader = context.getSource().getPlayerOrException();
-        if (!PartyManager.isLeader(leader.getUUID())) {
-            context.getSource().sendFailure(Component.translatable("duels_ld.party.not_leader"));
-            return 0;
-        }
-        PartyManager.disbandParty(leader);
-        return 1;
     }
 
     private static int arenaCreate(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
