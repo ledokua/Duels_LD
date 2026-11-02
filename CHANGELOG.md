@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.7.3 — arena cleanup, death crash
+
+- **Fixed a disconnect when a fighter "died".** The 1v1 death hook (and the 2v2 last-death,
+  `/duel surrender` and staff draw) ended the duel inside the damage handling. The cross-dimension
+  teleport out then desynced the player's chunk tracking: a `DistanceManager` NPE on their next
+  movement packet, and the client dropped (live, 2026-11-02). Fights now end on the next server
+  tick. If two results land in the same tick, the first one stands.
+- **Arenas are cleaned between fights** (`ArenaCleanup`). Before, Spell Engine summons,
+  projectiles and drops stayed in the arena and came back in the next fight there, on top of
+  new ones (an exploit).
+  - An arena is swept when a fight starts, again when its countdown ends (entities load a few
+    ticks after their chunk), and when it ends, before anyone is teleported out.
+  - A sweep removes projectiles, dropped items, XP orbs, clouds, TNT, falling blocks and
+    unowned mobs from the arena bounds. It keeps players and fixtures (armor stands, item frames,
+    paintings, leash knots, display/marker/interaction entities, NPCs_LD NPCs).
+  - **Nothing a player owns is deleted at the end of a fight.** Pets and Spell Engine summons
+    alike are teleported to their owner once the players are out. A Saint's Dragons binder empties
+    itself on summon, so deleting a dragon would lose it for good; spell summons expire on their own
+    timer. An offline owner's entities stay where they are.
+  - At the start of a fight, Spell Engine summons that loaded from disk are removed. That's the
+    exploit: usually a fighter's own leftover, which "return to owner" would put straight back in
+    the arena. Real pets are kept.
+  - Anything else freshly spawned in the arena during the fight is removed at the end, fixtures
+    included. Freshness is tracked through `ServerLevel.addFreshEntity`, so entities loading from
+    disk with their chunk never count.
+  - Every sweep that removes something is logged with counts by type, for moderators:
+    `[Duels] Arena <name> cleanup (<stage>, A vs B): removed {...}, kept N …`, plus a line per
+    entity returned to its owner.
+
 ## 1.7.2 — EMI off the stake screen
 
 Deployed 2026-10-26 (Prism, pack, live) by the Eden session; live at the next restart.

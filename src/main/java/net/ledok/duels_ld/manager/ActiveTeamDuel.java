@@ -74,8 +74,11 @@ public class ActiveTeamDuel extends ActiveMatch {
         return teamNameBase;
     }
 
+    /** Ends the duel on the next tick. The first decided result stands. */
     public void markForEnd(boolean draw, int winningTeam) {
-        pendingEndRequest = new EndRequest(draw, winningTeam);
+        if (pendingEndRequest == null) {
+            pendingEndRequest = new EndRequest(draw, winningTeam);
+        }
     }
 
     public EndRequest consumePendingEndRequest() {

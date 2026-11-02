@@ -307,7 +307,10 @@ public class DuelManager {
                 player.getHealth());
             UUID winnerUUID = getOpponentUUID(duel, player.getUUID());
             player.setHealth(player.getMaxHealth());
-            endDuel(player.server, duel, false, winnerUUID);
+            // Never end (and teleport) from inside the damage handling: the cross-dimension
+            // teleport there desynced the player's chunk tracking (DistanceManager NPE, the client
+            // dropped). The next server tick ends the duel.
+            duel.markForEnd(false, winnerUUID);
             return false;
         });
         
@@ -398,6 +401,7 @@ public class DuelManager {
             duel.setSpawnFacing(player1.getUUID(), spawn1.yaw(), spawn1.pitch());
             duel.setSpawnFacing(player2.getUUID(), spawn2.yaw(), spawn2.pitch());
             duel.setMatchmaking(true);
+            ArenaCleanup.onFightStart(player1.server, arena.name, "start", duelLabel(player1.server, List.of(duel.getPlayer1(), duel.getPlayer2())));
         }
     }
 
@@ -424,7 +428,7 @@ public class DuelManager {
             if (duel.getWagerNumber() == number) {
                 MinecraftServer server = ArenaManager.getServer();
                 if (server != null) {
-                    endDuel(server, duel, true, null);
+                    duel.markForEnd(true, null);
                 }
                 return;
             }
@@ -437,7 +441,7 @@ public class DuelManager {
         if (duel == null || !duel.isWager() || duel.isCountdown()) {
             return false;
         }
-        endDuel(player.server, duel, false, getOpponentUUID(duel, player.getUUID()));
+        duel.markForEnd(false, getOpponentUUID(duel, player.getUUID()));
         return true;
     }
 
@@ -547,6 +551,7 @@ public class DuelManager {
             storeTeamSpawn(duel, p3.getUUID(), t2a);
             storeTeamSpawn(duel, p4.getUUID(), t2b);
             duel.setMatchmaking(true);
+            ArenaCleanup.onFightStart(server, arena.name, "start", duelLabel(server, duel.allPlayers()));
         }
         DuelsApi.fireMatchStart(DuelsApi.Mode.TWO_V_TWO, duel.allPlayers());
     }
@@ -558,6 +563,7 @@ public class DuelManager {
      */
     private static void onServerStopping(MinecraftServer server) {
         for (ActiveDuel duel : new HashSet<>(activeDuels.values())) {
+            ArenaCleanup.onFightEnd(server, duel.getArenaName(), "server stopping");
             for (UUID id : List.of(duel.getPlayer1(), duel.getPlayer2())) {
                 ServerPlayer player = server.getPlayerList().getPlayer(id);
                 restorePlayer(player, duel.isMatchmaking());
@@ -571,6 +577,7 @@ public class DuelManager {
         activeDuels.clear();
 
         for (ActiveTeamDuel duel : new HashSet<>(activeTeamDuels.values())) {
+            ArenaCleanup.onFightEnd(server, duel.getArenaName(), "server stopping");
             for (UUID id : duel.allPlayers()) {
                 ServerPlayer player = server.getPlayerList().getPlayer(id);
                 restorePlayer(player, duel.isMatchmaking());
@@ -650,6 +657,8 @@ public class DuelManager {
                         duel.setStartTime(currentTime);
                         duel.getBossBar().setName(Component.translatable("duels_ld.duel.started"));
                         duel.getBossBar().setColor(BossEvent.BossBarColor.BLUE);
+                        // Entities load a few ticks after their chunk: sweep again as the fight begins.
+                        ArenaCleanup.onFightStart(server, duel.getArenaName(), "fight", duelLabel(server, List.of(duel.getPlayer1(), duel.getPlayer2())));
                         p1.sendSystemMessage(Component.translatable("duels_ld.duel.fight"));
                         p2.sendSystemMessage(Component.translatable("duels_ld.duel.fight"));
                     } else {
@@ -741,8 +750,12 @@ public class DuelManager {
         EdenBridge.resumeProtection(player1);
         EdenBridge.resumeProtection(player2);
 
+        // Clear what the fight left in the arena while it's still loaded, before anyone leaves;
+        // pets follow their owners out afterwards.
+        List<Entity> pets = ArenaCleanup.onFightEnd(server, duel.getArenaName(), duelLabel(server, List.of(duel.getPlayer1(), duel.getPlayer2())));
         restorePlayer(player1, duel.isMatchmaking());
         restorePlayer(player2, duel.isMatchmaking());
+        ArenaCleanup.returnPets(server, pets);
 
         recordMatchEnd(player1, duel.getArenaName());
         recordMatchEnd(player2, duel.getArenaName());
@@ -834,11 +847,13 @@ public class DuelManager {
         duel.getBossBar().removeAllPlayers();
         duel.getBossBar().setVisible(false);
 
+        List<Entity> pets = ArenaCleanup.onFightEnd(server, duel.getArenaName(), duelLabel(server, allPlayers));
         for (UUID id : allPlayers) {
             ServerPlayer player = server.getPlayerList().getPlayer(id);
             restorePlayer(player, duel.isMatchmaking());
             recordMatchEnd(player, duel.getArenaName());
         }
+        ArenaCleanup.returnPets(server, pets);
 
         if (draw) {
             for (UUID id : allPlayers) {
@@ -1136,6 +1151,16 @@ public class DuelManager {
         }
     }
 
+    /** "Alpha vs Bravo" for the arena cleanup log. */
+    private static String duelLabel(MinecraftServer server, List<UUID> players) {
+        List<String> names = new ArrayList<>();
+        for (UUID id : players) {
+            ServerPlayer p = server.getPlayerList().getPlayer(id);
+            names.add(p != null ? p.getGameProfile().getName() : id.toString().substring(0, 8));
+        }
+        return String.join(" vs ", names);
+    }
+
     private static void restorePlayer(ServerPlayer player, boolean shouldTeleportFromBackup) {
         if (player == null) return;
 
@@ -1289,6 +1314,7 @@ public class DuelManager {
                         duel.setStartTime(currentTime);
                         duel.getBossBar().setName(Component.translatable("duels_ld.duel.started"));
                         duel.getBossBar().setColor(BossEvent.BossBarColor.BLUE);
+                        ArenaCleanup.onFightStart(server, duel.getArenaName(), "fight", duelLabel(server, duel.allPlayers()));
                         for (UUID playerId : duel.allPlayers()) {
                             ServerPlayer player = server.getPlayerList().getPlayer(playerId);
                             if (player != null) {
@@ -1337,16 +1363,17 @@ public class DuelManager {
         }
         boolean team1Alive = duel.hasAlivePlayersInTeam(1);
         boolean team2Alive = duel.hasAlivePlayersInTeam(2);
+        // Ended on the next tick, never from inside the damage handling (see the 1v1 death hook).
         if (!team1Alive && !team2Alive) {
-            endTeamDuel(server, duel, true, 0);
+            duel.markForEnd(true, 0);
             return;
         }
         if (!team1Alive) {
-            endTeamDuel(server, duel, false, 2);
+            duel.markForEnd(false, 2);
             return;
         }
         if (!team2Alive) {
-            endTeamDuel(server, duel, false, 1);
+            duel.markForEnd(false, 1);
         }
     }
 

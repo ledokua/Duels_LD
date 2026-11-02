@@ -73,6 +73,9 @@ dependencies {
             include: ["Eden_LD-*.jar"],
             exclude: ["*sources.jar"]
     )
+    // Optional extra mods for dev runs only (never bundled), e.g. Spell Engine + Wizards to test
+    // the arena cleanup with real spell summons. Drop jars into libs/devrun/ (git-ignored).
+    modLocalRuntime fileTree(dir: "${project.projectDir}/libs/devrun", include: ["*.jar"])
     // EMI (optional): only to keep its panels off the stake screen (client/compat/DuelsEmiPlugin).
     modCompileOnly("dev.emi:emi-fabric:1.1.24+1.21.1:api") { transitive = false }
     modLocalRuntime("dev.emi:emi-fabric:1.1.24+1.21.1") { transitive = false }

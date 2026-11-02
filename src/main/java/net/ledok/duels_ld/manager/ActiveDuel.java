@@ -30,8 +30,11 @@ public class ActiveDuel extends ActiveMatch {
         return teamName;
     }
 
+    /** Ends the duel on the next tick. The first decided result stands (two hits in one tick can't flip it). */
     public void markForEnd(boolean draw, UUID winnerUUID) {
-        pendingEndRequest = new EndRequest(draw, winnerUUID);
+        if (pendingEndRequest == null) {
+            pendingEndRequest = new EndRequest(draw, winnerUUID);
+        }
     }
 
     public EndRequest consumePendingEndRequest() {
